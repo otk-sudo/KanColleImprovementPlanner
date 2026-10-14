@@ -15,7 +15,7 @@ PC向け、ログイン・端末間同期なしのWebアプリ。各提督のブ
 
 ## Claudeの開始
 PowerShellで `Set-Location C:\dev\KanColleImprovementPlanner` の後に `claude.cmd` を実行し、docs/claude-start-prompt.txtを渡す。
-公開先はGitHub Pagesに決定。GitHubリポジトリは未確定。技術推奨案はdocs/technology-selection.md。CreationLogのソース・Android設定は流用しない。
+公開先はGitHub Pagesに決定。GitHubリポジトリはhttps://github.com/otk-sudo/KanColleImprovementPlanner（公開）。技術推奨案はdocs/technology-selection.md。CreationLogのソース・Android設定は流用しない。
 
 ## UI設計
 画面設計の初稿と要求対応：docs/ui-design-v1.md。Penpotで主要画面と状態を整理。現在の一覧はdocs/ui-reference/README.mdを参照。未確定事項と実装後の検証は同文書を参照。
