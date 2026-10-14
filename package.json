@@ -1,0 +1,50 @@
+{
+  "name": "kancolle-improvement-planner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "艦これ改修スケジューラ（改修航路）— ブラウザ内で所持データと改修計画を管理するPC向けWebアプリ",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "master:build": "node scripts/build-master.mjs",
+    "master:crosscheck": "node scripts/crosscheck-master.mjs",
+    "screens:capture": "playwright test --project=screens",
+    "screens:compare": "node scripts/compare-screens.mjs"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans-jp": "5.3.1",
+    "dexie": "4.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router": "7.18.4",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "22.19.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "fake-indexeddb": "6.2.5",
+    "globals": "17.13.0",
+    "pixelmatch": "8.0.0",
+    "pngjs": "7.0.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.4"
+  }
+}

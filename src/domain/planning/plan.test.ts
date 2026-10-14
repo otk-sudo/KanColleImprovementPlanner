@@ -1,0 +1,302 @@
+import { describe, expect, it } from 'vitest';
+import { FX, fixtureMaster, stage } from '../../test-support/fixtureMaster';
+import { attempt, goal, planInput } from '../../test-support/planFixtures';
+import type { MasterFile } from '../master/schema';
+import { buildPlan } from './plan';
+
+const ALL = [0, 1, 2, 3, 4, 5, 6];
+
+/** 単純な架空マスター：X(1) の★改修はネジ screws 個・素材 Y(2) を fodder 個。担当艦 H改二(101) は days。 */
+function simpleMaster(opts: { screws?: number; fodder?: number; days?: number[]; helpers?: boolean; craft?: boolean; cycle?: boolean } = {}): MasterFile {
+  const m = fixtureMaster();
+  const st = stage({ devmats: 1, devmatsGuaranteed: 2, screws: opts.screws ?? 4, screwsGuaranteed: (opts.screws ?? 4) + 2, equipment: opts.fodder ? [{ equipmentId: 2, count: opts.fodder }] : [] });
+  m.equipment = [
+    { id: 1, name: 'X', typeId: 1, typeName: '', iconId: 1, sortNo: 1 },
+    { id: 2, name: 'Y', typeId: 1, typeName: '', iconId: 1, sortNo: 2 },
+    { id: 3, name: 'Z', typeId: 1, typeName: '', iconId: 1, sortNo: 3 },
+  ];
+  m.ships = [
+    { id: 100, name: 'H', yomi: '', shipTypeId: 2, afterShipId: 101, afterLevel: 50, familyId: 100, sortNo: 1 },
+    { id: 101, name: 'H改二', yomi: '', shipTypeId: 2, afterShipId: null, afterLevel: null, familyId: 100, sortNo: 2 },
+  ];
+  const helpers = opts.helpers === false ? [] : [{ shipIds: [101], days: opts.days ?? ALL }];
+  const cost = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, p1: st, p2: st, conv: null, extra: [] };
+  m.recipes = [{ equipmentId: 1, entries: [{ entryIndex: 0, helpers, convert: null, cost }] }];
+  if (opts.craft) {
+    // Z ★MAX → Y★0（素材Yの製作経路）。Z の改修はネジ1
+    const zs = stage({ screws: 1, screwsGuaranteed: 1, equipment: opts.cycle ? [{ equipmentId: 1, count: 1 }] : [] });
+    m.recipes.push({ equipmentId: 3, entries: [{ entryIndex: 0, helpers: [{ shipIds: [101], days: ALL }], convert: { toEquipmentId: 2, toStar: 0 }, cost: { fuel: 0, ammo: 0, steel: 0, bauxite: 0, p1: zs, p2: zs, conv: zs, extra: [] } }] });
+    if (opts.cycle) {
+      // X ★MAX → Z★0 も追加（Y を作るのに X が要り、X の改修に Y が要る）
+      m.recipes[0]!.entries.push({ entryIndex: 1, helpers: [{ shipIds: [101], days: ALL }], convert: { toEquipmentId: 3, toStar: 0 }, cost: { ...cost, conv: st } });
+    }
+  }
+  return m;
+}
+
+describe('完成品と改修対象の配分', () => {
+  it('P01：★6以上2個と★10を1個。★10を二重に数えず残り1', () => {
+    const g6 = goal({ goalId: 'g6', equipmentId: 1, targetStar: 6, count: 2 });
+    const g10 = goal({ goalId: 'g10', equipmentId: 1, targetStar: 10, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 6, 1], [1, 10, 1]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [g6, g10] }));
+    const p6 = plan.goals.find((g) => g.goalId === 'g6')!;
+    const p10 = plan.goals.find((g) => g.goalId === 'g10')!;
+    expect(p10.completed).toBe(1);
+    expect(p10.completedBuckets).toEqual([{ equipmentId: 1, star: 10, count: 1 }]);
+    expect(p6.completed).toBe(1);
+    expect(p6.completed + p10.completed).toBe(2);
+    expect(p6.missingUnits).toBe(1);
+  });
+
+  it('P02：手動保護と目標の完成品が同じ1個なら保護は1個', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 6, count: 1 });
+    const plan = buildPlan(
+      planInput({
+        master: simpleMaster(),
+        inventory: { equipment: [[1, 6, 1]], ships: [101] },
+        goals: [g],
+        protections: [{ bucket: '1:6', equipmentId: 1, star: 6, count: 1, instanceIds: null, reason: '手動', reconciliationRequired: false, reconciliationSnapshotId: null, previousOwned: null, updatedAt: '' }],
+      }),
+    );
+    const b = plan.buckets.find((x) => x.equipmentId === 1 && x.star === 6)!;
+    expect(b.effectiveProtection).toBe(1);
+    expect(b.materialAvailable).toBe(0);
+  });
+
+  it('P03：低優先度目標の改修対象は高優先度の素材にしない', () => {
+    const high = goal({ goalId: 'high', equipmentId: 1, targetStar: 1, count: 1, priority: 1 });
+    const low = goal({ goalId: 'low', equipmentId: 2, targetStar: 1, count: 1, priority: 2 });
+    const m = simpleMaster({ fodder: 1 });
+    m.recipes.push({ equipmentId: 2, entries: [{ entryIndex: 0, helpers: [{ shipIds: [101], days: ALL }], convert: null, cost: { fuel: 0, ammo: 0, steel: 0, bauxite: 0, p1: stage(), p2: stage(), conv: null, extra: [] } }] });
+    const plan = buildPlan(planInput({ master: m, inventory: { equipment: [[1, 0, 1], [2, 0, 1]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [high, low] }));
+    expect(plan.goals.find((g) => g.goalId === 'low')!.targetUnits).toEqual([{ equipmentId: 2, star: 0 }]);
+    const y = plan.totals.find((t) => t.key === 'equipment:2')!;
+    expect(y.need).toBe(1);
+    expect(y.available).toBe(0);
+    expect(y.shortage).toBe(1);
+  });
+});
+
+describe('素材の製作と循環', () => {
+  it('P04：不足する素材Yを製作経路で補い、製作工程を親の前提にする', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1, materialRoutes: { '2': { kind: 'craft', routeKey: '3>2' } } });
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 2, craft: true }), inventory: { equipment: [[1, 0, 1], [3, 9, 2]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [g] }));
+    const crafts = plan.steps.filter((s) => s.role === 'craft');
+    // Z★9 2個をそれぞれ ★10 → Y へ更新：各2工程×2
+    expect(crafts).toHaveLength(4);
+    const parent = plan.steps.find((s) => s.role === 'target')!;
+    const finals = crafts.filter((s) => s.transition.kind === 'convert').map((s) => s.stepKey);
+    expect(parent.predecessorKeys.sort()).toEqual(finals.sort());
+    const y = plan.totals.find((t) => t.key === 'equipment:2')!;
+    expect(y.planned).toBe(2);
+    expect(y.shortage).toBe(0);
+    // ネジは X の1回(4) + Z 4工程(各1) を一度ずつ
+    expect(plan.totals.find((t) => t.key === 'resource:8')!.need).toBe(8);
+  });
+
+  it('P05：Y を X から作る経路で、X の改修に Y が要るなら循環として未配置', () => {
+    // X(1)★9 → ★10 → Z(3) → … → Y(2)。X の改修そのものに Y が必要
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1, matchMode: 'exact', materialRoutes: { '2': { kind: 'craft', routeKey: '1>3>2' } } });
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 1, craft: true, cycle: true }), inventory: { equipment: [[1, 0, 1], [1, 9, 1]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [g] }));
+    expect(plan.unplaced.some((p) => p.reasons.includes('CYCLE'))).toBe(true);
+    const target = plan.steps.find((s) => s.role === 'target')!;
+    expect(plan.unplaced.find((p) => p.stepKey === target.stepKey)?.reasons).toContain('PREDECESSOR_BLOCKED');
+  });
+
+  it('P05：別の枝で同じ素材を2回使うのは循環ではない', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 2, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 1 }), inventory: { equipment: [[1, 0, 1], [2, 0, 2]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [g] }));
+    expect(plan.unplaced).toEqual([]);
+    expect(plan.totals.find((t) => t.key === 'equipment:2')!.shortage).toBe(0);
+  });
+});
+
+describe('日程配置と仮想在庫', () => {
+  it('P06：ネジ6・各工程4なら累積不足は 0・2・6（丸めない）', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 3, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ screws: 4 }), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 6, 7: 100 } }, goals: [g], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] } }));
+    const placed = plan.placements.filter((p) => p.date).sort((a, b) => (a.date! < b.date! ? -1 : 1));
+    expect(placed.map((p) => p.shortages.find((s) => s.key === 'resource:8')?.deficit ?? 0)).toEqual([0, 2, 6]);
+    expect(placed.map((p) => p.tentative)).toEqual([false, true, true]);
+    expect(placed.map((p) => p.date)).toEqual(['2026-10-14', '2026-10-15', '2026-10-16']);
+  });
+
+  it('P07：艦娘未取得は未配置、資材不足は仮配置、条件不明は未配置', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const unknownShips = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], resources: { 8: 0, 7: 0 } }, goals: [g] }));
+    expect(unknownShips.unplaced[0]?.reasons).toContain('HELPER_UNKNOWN');
+
+    const short = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 0, 7: 0 } }, goals: [g] }));
+    expect(short.unplaced).toEqual([]);
+    expect(short.placements[0]?.tentative).toBe(true);
+
+    const noHelpers = buildPlan(planInput({ master: simpleMaster({ helpers: false }), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 100, 7: 100 } }, goals: [g] }));
+    expect(noHelpers.unplaced[0]?.reasons).toContain('RECIPE_UNKNOWN');
+  });
+
+  it('担当艦の改造段階が違う・未所持を区別する', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const mismatch = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [100], resources: { 8: 9, 7: 9 } }, goals: [g] }));
+    expect(mismatch.unplaced[0]?.reasons).toContain('REMODEL_MISMATCH');
+    const missing = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [], resources: { 8: 9, 7: 9 } }, goals: [g] }));
+    expect(missing.unplaced[0]?.reasons).toContain('HELPER_MISSING');
+  });
+
+  it('P08：前提と後続は上限2なら同日（前提が先）、上限1なら別日', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 2, count: 1 });
+    const two = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }));
+    const sorted = two.placements.slice().sort((a, b) => a.dayOrder - b.dayOrder);
+    expect(sorted.map((p) => p.date)).toEqual(['2026-10-14', '2026-10-14']);
+    expect(sorted.map((p) => p.stepKey.split('|')[1])).toEqual(['1:0>1', '1:1>2']);
+    const one = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] } }));
+    expect(one.placements.map((p) => p.date).sort()).toEqual(['2026-10-14', '2026-10-15']);
+  });
+
+  it('担当艦の曜日・利用者の休み・曜日上限を守る', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 3, count: 1 });
+    // 担当艦は月・水・金（1,3,5）。10/14(水) は休み指定、金曜上限0
+    const plan = buildPlan(
+      planInput({
+        master: simpleMaster({ days: [1, 3, 5] }),
+        inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } },
+        goals: [g],
+        settings: { weekdayLimits: [1, 1, 1, 1, 1, 0, 1], holidays: [{ holidayId: 'h', start: '2026-10-14', end: '2026-10-14' }] },
+      }),
+    );
+    expect(plan.placements.map((p) => p.date)).toEqual(['2026-10-19', '2026-10-21', '2026-10-26']);
+  });
+
+  it('P19：探索期間内に空きがなければ SEARCH_LIMIT（改修不可とは表示しない）', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 3, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1], searchDays: 2 } }));
+    expect(plan.unplaced.map((p) => p.reasons[0])).toEqual(['SEARCH_LIMIT']);
+  });
+
+  it('担当艦の曜日と実施できる曜日が重ならなければ NO_AVAILABLE_DAY', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ days: [2] }), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { weekdayLimits: [1, 1, 0, 1, 1, 1, 1] } }));
+    expect(plan.unplaced[0]?.reasons).toContain('NO_AVAILABLE_DAY');
+  });
+
+  it('P21：同じ入力で3回計算すると同じ工程・日付・順番・理由', () => {
+    const goals = [goal({ goalId: 'a', equipmentId: 1, targetStar: 4, count: 2, priority: 1 }), goal({ goalId: 'b', equipmentId: 1, targetStar: 2, count: 1, priority: 2 })];
+    const spec = { master: simpleMaster({ fodder: 1 }), inventory: { equipment: [[1, 0, 3], [2, 0, 2]] as [number, number, number][], ships: [101], resources: { 8: 10, 7: 10 } }, goals };
+    const r = [buildPlan(planInput(spec)), buildPlan(planInput(spec)), buildPlan(planInput(spec))].map((p) => JSON.stringify({ s: p.steps, p: p.placements, u: p.unplaced }));
+    expect(r[1]).toBe(r[0]);
+    expect(r[2]).toBe(r[0]);
+  });
+});
+
+describe('当日の固定・スキップ・失敗', () => {
+  const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 2, count: 1 });
+  const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+
+  it('P09：当日スキップした枠は自動補充せず、その工程は翌日以降の見込みとして表示する', () => {
+    const skipped = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'skip' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [skipped], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] } }));
+    const today = plan.placements.filter((p) => p.date === '2026-10-14');
+    expect(today).toEqual([]);
+    const first = plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')!;
+    expect(first.provisional).toBe(true);
+    expect(first.date).toBe('2026-10-15');
+    expect(plan.attemptChanges.create.some((a) => a.stepKey === 'g|1:0>1|0')).toBe(false);
+  });
+
+  it('P11：成功1・失敗1で上限2なら当日の追加はなく、失敗の再挑戦は翌日以降', () => {
+    const goal2 = goal({ goalId: 'g', equipmentId: 1, targetStar: 3, count: 1 });
+    const t12 = { kind: 'improve' as const, equipmentId: 1, fromStar: 1, toStar: 2 };
+    const succeeded = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'success', dayOrder: 1 });
+    const failed = attempt({ attemptId: 'g|1:1>2|0@1', stepKey: 'g|1:1>2|0', goalId: 'g', transition: t12, scheduledDate: '2026-10-14', outcome: 'failure', dayOrder: 2 });
+    // 成功で★1になった在庫
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 1, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [goal2], attempts: [succeeded, failed], settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }));
+    expect(plan.placements.filter((p) => p.date === '2026-10-14')).toEqual([]);
+    const retry = plan.placements.find((p) => p.stepKey === 'g|1:1>2|0')!;
+    expect(retry.date).toBe('2026-10-15');
+    expect(retry.attemptId).toBe('g|1:1>2|0@2');
+  });
+
+  it('P22：当日の予定の対象が在庫更新で消えたら当日に残して確認待ち（自動で翌日へ移さない）', () => {
+    const today = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [today] }));
+    const kept = plan.placements.find((p) => p.attemptId === today.attemptId)!;
+    expect(kept.date).toBe('2026-10-14');
+    expect(kept.executionGate).toBe('reviewRequired');
+    expect(plan.attemptChanges.cancel).toEqual([]);
+  });
+
+  it('日全体スキップの日には新しい予定を置かない', () => {
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], daySkips: [{ date: '2026-10-14', createdAt: '' }] }));
+    expect(plan.placements.every((p) => p.date !== '2026-10-14')).toBe(true);
+  });
+
+  it('当日の既存予定は日付と順番を保ち、将来分だけ再配置する', () => {
+    const fixed = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', dayOrder: 1 });
+    const future = attempt({ attemptId: 'g|1:1>2|0@1', stepKey: 'g|1:1>2|0', goalId: 'g', transition: { kind: 'improve', equipmentId: 1, fromStar: 1, toStar: 2 }, scheduledDate: '2026-10-20' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [fixed, future], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] } }));
+    expect(plan.placements.find((p) => p.attemptId === fixed.attemptId)!.date).toBe('2026-10-14');
+    expect(plan.placements.find((p) => p.attemptId === future.attemptId)!.date).toBe('2026-10-15');
+    expect(plan.attemptChanges.update.find((u) => u.attemptId === future.attemptId)?.scheduledDate).toBe('2026-10-15');
+    expect(plan.attemptChanges.create).toEqual([]);
+  });
+});
+
+describe('確実化と完了予定（design/17）', () => {
+  it('P35：★6になる改修から確実化なら ★4→5 は通常、★5→6 は確実化', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 6, count: 1, guarantee: { mode: 'fromTargetStar', fromStar: 6 } });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 4, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g] }));
+    const modes = Object.fromEntries(plan.steps.map((s) => [s.transitionKey, s.mode]));
+    expect(modes).toEqual({ '1:4>5': 'normal', '1:5>6': 'guaranteed' });
+  });
+
+  it('P36：更新を確実化する指定は更新後★0でも確実化のまま', () => {
+    const g = goal({ goalId: 'g', equipmentId: FX.gunUpgraded, targetStar: 0, count: 1, routeKey: `${FX.gunBase}>${FX.gunUpgraded}`, updateGuarantee: true });
+    const plan = buildPlan(planInput({ inventory: { equipment: [[FX.gunBase, 10, 1]], ships: [FX.shipAKai2], resources: { 8: 99, 7: 99 }, items: { [FX.itemB]: 5 } }, goals: [g] }));
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.steps[0]?.transition.kind).toBe('convert');
+    expect(plan.steps[0]?.mode).toBe('guaranteed');
+  });
+
+  it('P37：1工程でも未配置なら目標の完了予定日は未定', () => {
+    const m = simpleMaster();
+    m.recipes.push({ equipmentId: 3, entries: [{ entryIndex: 0, helpers: [], convert: null, cost: { fuel: 0, ammo: 0, steel: 0, bauxite: 0, p1: stage(), p2: stage(), conv: null, extra: [] } }] });
+    const g1 = goal({ goalId: 'ok', equipmentId: 1, targetStar: 1, count: 1 });
+    const g2 = goal({ goalId: 'ng', equipmentId: 3, targetStar: 1, count: 1 });
+    const plan = buildPlan(planInput({ master: m, inventory: { equipment: [[1, 0, 1], [3, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g1, g2] }));
+    expect(plan.goals.find((g) => g.goalId === 'ok')!.completionDate).toBe('2026-10-14');
+    expect(plan.goals.find((g) => g.goalId === 'ng')!.completionDate).toBeNull();
+    expect(plan.goals.find((g) => g.goalId === 'ng')!.status).toBe('undetermined');
+  });
+
+  it('所持だけで達成した目標は「所持で達成」で予定日を付けない', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 5, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 7, 1]], ships: [101] }, goals: [g] }));
+    expect(plan.goals[0]?.status).toBe('achieved');
+    expect(plan.goals[0]?.completionDate).toBeNull();
+  });
+
+  it('完全一致の目標は★が高い装備を完成品に数えない', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 5, count: 1, matchMode: 'exact' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 7, 1]], ships: [101] }, goals: [g] }));
+    expect(plan.goals[0]?.completed).toBe(0);
+    expect(plan.goals[0]?.missingUnits).toBe(1);
+  });
+});
+
+describe('不明と0の区別', () => {
+  it('所持数が未取得の資材は不足を0と表示せず不明', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 7: 99 } }, goals: [g] }));
+    const screws = plan.totals.find((t) => t.key === 'resource:8')!;
+    expect(screws.available).toBeNull();
+    expect(screws.shortage).toBeNull();
+    expect(plan.placements[0]?.tentative).toBe(true);
+    expect(plan.placements[0]?.shortages.find((s) => s.key === 'resource:8')?.deficit).toBeNull();
+  });
+
+  it('装備が未取得なら工程を作らず理由を返す', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { ships: [101] }, goals: [g] }));
+    expect(plan.goals[0]?.reasons).toContain('EQUIPMENT_UNKNOWN');
+    expect(plan.steps).toEqual([]);
+  });
+});
