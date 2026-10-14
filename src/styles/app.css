@@ -1,0 +1,617 @@
+/* 改修航路：画面設計 v1（Penpot S01〜S34、1440×940 基準）に合わせた共通スタイル */
+
+:root {
+  --bg: #f3f6f7;
+  --nav: #152f39;
+  --nav-active: #28515b;
+  --nav-text: #e1e5e6;
+  --nav-sub: #829ba3;
+  --text: #18313b;
+  --sub: #637680;
+  --muted: #4c5f68;
+  --primary: #087f80;
+  --primary-text: #ffffff;
+  --soft: #e4f3f0;
+  --secondary: #eaf0f2;
+  --disabled: #d5dee2;
+  --disabled-text: #637680;
+  --card: #ffffff;
+  --cell: #f8fafb;
+  --today: #d9eeeb;
+  --track: #e3ebed;
+  --bar: #e8eef1;
+  --line: #e3e9ec;
+  --warn-bg: #fff3d9;
+  --warn: #94600a;
+  --error-bg: #fcedeb;
+  --error: #a23830;
+  --ok: #087f80;
+  --fail: #a23830;
+  --radius-card: 10px;
+  --radius-button: 6px;
+  --nav-width: 216px;
+  --header-height: 72px;
+  --gutter: 32px;
+  --font: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--primary);
+}
+
+:focus-visible {
+  outline: 3px solid #1d9a9b;
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- シェル ---------- */
+.shell {
+  display: grid;
+  grid-template-columns: var(--nav-width) minmax(0, 1fr);
+  min-height: 100%;
+}
+
+.nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  min-height: 600px;
+  background: var(--nav);
+  color: var(--nav-text);
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px;
+  overflow-y: auto;
+}
+
+.nav-brand {
+  padding: 24px 12px 0;
+  height: 129px;
+}
+
+.nav-brand-name {
+  display: block;
+  font-size: 25px;
+  line-height: 36px;
+  color: #ffffff;
+  font-weight: 400;
+}
+
+.nav-brand-sub {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--nav-sub);
+  letter-spacing: 0.02em;
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  height: 43px;
+  padding: 0 18px;
+  border-radius: 6px;
+  color: var(--nav-text);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-link[aria-current='page'] {
+  background: var(--nav-active);
+  color: #ffffff;
+}
+
+.nav-foot {
+  margin-top: auto;
+  padding: 0 12px 100px;
+}
+
+.nav-foot-main {
+  display: block;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.nav-foot-sub {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--nav-sub);
+}
+
+.main-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header {
+  position: relative;
+  height: var(--header-height);
+  background: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 23px 32px 0;
+  flex: none;
+}
+
+.header-title {
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0;
+  font-weight: 400;
+}
+
+.header-status {
+  position: absolute;
+  left: calc(100% - 390px);
+  top: 24px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.header-status[data-state='error'] {
+  color: var(--error);
+}
+
+.header-status[data-state='busy'],
+.header-status[data-state='dirty'] {
+  color: var(--warn);
+}
+
+.main {
+  flex: 1;
+  padding: 26px var(--gutter) 0;
+  min-width: 0;
+}
+
+.app-footer {
+  padding: 18px var(--gutter) 14px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+/* ---------- ページ見出し ---------- */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: var(--head-gap, 27px);
+  min-height: 63px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 400;
+}
+
+.page-sub {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+/* ---------- ボタン ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-button);
+  border: none;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--secondary);
+}
+
+.btn:hover {
+  filter: brightness(0.97);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.btn[disabled],
+.btn[aria-disabled='true'] {
+  background: var(--disabled);
+  color: var(--disabled-text);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: inherit;
+  text-align: left;
+}
+
+/* ---------- カード・帯 ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-card);
+  padding: 20px 20px 24px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 400;
+}
+
+.banner {
+  border-radius: var(--radius-card);
+  padding: 18px 22px;
+}
+
+.banner-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.banner-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.banner-ok {
+  background: var(--soft);
+  color: var(--primary);
+}
+
+.banner-plain {
+  background: var(--bar);
+  color: var(--text);
+}
+
+.text-warn {
+  color: var(--warn);
+}
+
+.text-error,
+.text-fail {
+  color: var(--fail);
+}
+
+.text-ok {
+  color: var(--ok);
+}
+
+.text-sub {
+  color: var(--sub);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+/* ---------- タブ（切替ボタン） ---------- */
+.tabs {
+  display: flex;
+  gap: 12px;
+}
+
+/* ---------- 入力 ---------- */
+.field-label {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  margin-bottom: 12px;
+}
+
+.input,
+.select {
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-button);
+  background: var(--secondary);
+  padding: 0 14px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 18px,
+    calc(100% - 14px) 18px;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+}
+
+.textarea {
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--secondary);
+  padding: 18px 16px;
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.field-error {
+  color: var(--error);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  border-radius: var(--radius-button);
+  background: var(--secondary);
+  padding: 0 4px;
+}
+
+.stepper button {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.stepper output,
+.stepper input {
+  min-width: 40px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+}
+
+/* ---------- 選択欄（値の直後に ▾） ---------- */
+.selectbox {
+  position: relative;
+  display: inline-block;
+  height: 40px;
+  vertical-align: middle;
+}
+
+.selectbox-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+}
+
+.selectbox-native::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.selectbox-face {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 14px;
+  border-radius: var(--radius-button);
+  background: var(--secondary);
+  font-size: 13px;
+  white-space: pre;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.selectbox-face.is-placeholder {
+  color: var(--sub);
+}
+
+.selectbox.is-primary .selectbox-face {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.selectbox:focus-within .selectbox-face {
+  outline: 3px solid #1d9a9b;
+  outline-offset: 2px;
+}
+
+/* ---------- 表 ---------- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--sub);
+  font-size: 13px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* ---------- 画像 ---------- */
+.thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2f3;
+  color: var(--sub);
+  border-radius: 6px;
+  overflow: hidden;
+  flex: none;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- 汎用 ---------- */
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.empty-state {
+  padding: 32px 24px;
+  color: var(--sub);
+}
+
+.app-loading,
+.app-fatal {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.app-fatal .card {
+  max-width: 640px;
+  text-align: left;
+}
+
+/* ---------- PCウィンドウ幅（ui-design-v1「PC幅・キーボード」） ---------- */
+@media (max-width: 1279px) {
+  :root {
+    --nav-width: 72px;
+    --gutter: 24px;
+  }
+  .nav-brand-name,
+  .nav-brand-sub,
+  .nav-foot,
+  .nav-link .nav-label {
+    display: none;
+  }
+  .nav-brand {
+    height: 80px;
+    padding: 20px 0 0;
+    text-align: center;
+  }
+  .nav-brand::after {
+    content: '航';
+    font-size: 22px;
+    color: #ffffff;
+  }
+  .nav-link {
+    justify-content: center;
+    padding: 0;
+  }
+  .nav-link .nav-short {
+    display: inline;
+  }
+  .header-status {
+    left: auto;
+    right: 24px;
+  }
+}
+
+.nav-link .nav-short {
+  display: none;
+  font-size: 12px;
+}

@@ -1,0 +1,510 @@
+/* 所持データ S06/S16/S17/S33/S22 */
+.inv-tabs {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 28px;
+}
+
+.inv-tabs.is-narrow {
+  margin-bottom: 23px;
+}
+
+.inv-eq-card {
+  padding: 16px 24px 30px;
+}
+
+.inv-filter {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 26px;
+}
+
+.inv-search,
+.inv-type {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--sub);
+  padding: 0;
+}
+
+.inv-search {
+  width: 165px;
+}
+
+.inv-search::placeholder {
+  color: var(--sub);
+}
+
+.inv-type {
+  appearance: none;
+  cursor: pointer;
+}
+
+.inv-eq-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 900px;
+  margin-top: 31px;
+}
+
+.inv-eq-table th,
+.inv-eq-table td {
+  text-align: left;
+  font-weight: 400;
+  vertical-align: top;
+  padding: 0;
+}
+
+.inv-eq-table thead th {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+  padding-bottom: 41px;
+}
+
+.inv-eq-table thead th:nth-child(1) {
+  width: 448px;
+}
+
+.inv-eq-table thead th:nth-child(2),
+.inv-eq-table thead th:nth-child(3) {
+  width: 160px;
+}
+
+.inv-eq-table thead th:nth-child(4) {
+  width: 150px;
+}
+
+.inv-eq-table tbody th,
+.inv-eq-table tbody td {
+  font-size: 15px;
+  line-height: 22px;
+  height: 72px;
+}
+
+.inv-eq-name {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.inv-eq-name:hover {
+  text-decoration: underline;
+}
+
+.inv-protect-btn {
+  display: flex;
+  position: relative;
+  left: -80px;
+  width: 260px;
+  margin-top: 4px;
+}
+
+.inv-warning {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.inv-warning a {
+  text-decoration: none;
+}
+
+.inv-bottom {
+  display: grid;
+  grid-template-columns: 562px minmax(0, 1fr);
+  gap: 23px;
+  margin-top: 24px;
+}
+
+.inv-helper-card,
+.inv-import-card {
+  min-height: 186px;
+  padding: 16px 24px 24px;
+}
+
+.inv-helper-card .card-title,
+.inv-import-card .card-title,
+.inv-ship-card .card-title,
+.inv-ship-note .card-title,
+.inv-items-card .card-title,
+.prot-card1 .card-title,
+.prot-card2 .card-title,
+.detail-card .card-title,
+.detail-card2 .card-title {
+  margin-left: -4px;
+}
+
+.inv-helper-list,
+.inv-import-list {
+  list-style: none;
+  padding: 0;
+  margin: 15px 0 0;
+  font-size: 14px;
+  line-height: 17px;
+}
+
+.inv-helper-list li {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+}
+
+.inv-import-list a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.inv-import-list a:hover {
+  text-decoration: underline;
+}
+
+.inv-helper-name {
+  white-space: nowrap;
+}
+
+/* S16 */
+.inv-ship-card {
+  padding: 16px 24px 24px 20px;
+  min-height: 413px;
+}
+
+.inv-ship-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 22px;
+  min-width: 860px;
+}
+
+.inv-ship-table th,
+.inv-ship-table td {
+  text-align: left;
+  font-weight: 400;
+  padding: 0;
+}
+
+.inv-ship-table thead th {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+  padding: 0 0 3px 6px;
+}
+
+.inv-ship-table thead th:nth-child(1) {
+  width: 315px;
+}
+
+.inv-ship-table thead th:nth-child(2) {
+  width: 296px;
+}
+
+.inv-ship-table thead th:nth-child(3) {
+  width: 282px;
+}
+
+.inv-ship-table tbody tr {
+  height: 85px;
+}
+
+.inv-ship-table tbody tr.is-alt th,
+.inv-ship-table tbody tr.is-alt td {
+  background: var(--bg);
+}
+
+.inv-ship-table tbody tr.is-alt th {
+  border-radius: 8px 0 0 8px;
+}
+
+.inv-ship-table tbody tr.is-alt td:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.inv-ship-table tbody td {
+  font-size: 15px;
+  padding-left: 6px;
+}
+
+.inv-ship-table tbody td:nth-child(3) {
+  font-size: 14px;
+}
+
+.inv-ship-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 85px;
+  padding-left: 14px;
+}
+
+.inv-ship-name {
+  font-size: 16px;
+}
+
+.inv-ship-note {
+  margin-top: 22px;
+  padding: 16px 24px 24px 20px;
+  min-height: 170px;
+}
+
+.inv-ship-note-text {
+  margin: 20px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--sub);
+}
+
+.inv-ship-updated {
+  margin: 25px 0 0 6px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+.inv-image-note {
+  margin: 14px 0 0 26px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* S17 */
+.inv-items-card {
+  padding: 16px 24px 24px 20px;
+  min-height: 576px;
+}
+
+.inv-items-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 30px;
+  min-width: 860px;
+}
+
+.inv-items-table th,
+.inv-items-table td {
+  text-align: left;
+  font-weight: 400;
+  padding: 0 0 0 6px;
+}
+
+.inv-items-table thead th {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+  padding-bottom: 26px;
+  width: 221px;
+}
+
+.inv-items-table tbody th,
+.inv-items-table tbody td {
+  height: 86px;
+  vertical-align: top;
+  padding-top: 8px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.inv-items-table tbody tr.is-alt th,
+.inv-items-table tbody tr.is-alt td {
+  background: var(--bg);
+}
+
+.inv-items-table tbody tr.is-alt th {
+  border-radius: 8px 0 0 8px;
+}
+
+.inv-items-table tbody tr.is-alt td:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.inv-items-foot {
+  margin: 40px 0 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* S33 */
+.prot-card1 {
+  padding: 16px 24px 24px 20px;
+  min-height: 229px;
+}
+
+.prot-counts {
+  margin: 14px 0 0 6px;
+  font-size: 22px;
+  line-height: 32px;
+}
+
+.prot-detail {
+  margin: 15px 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.prot-hint {
+  margin: 26px 0 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.prot-card2 {
+  margin-top: 24px;
+  padding: 16px 24px 24px 20px;
+  min-height: 232px;
+}
+
+.prot-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  margin: 20px 0 0 6px;
+}
+
+.prot-stepper {
+  width: 300px;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: 17px;
+}
+
+.prot-stepper output {
+  font-size: 17px;
+}
+
+.prot-range {
+  font-size: 15px;
+}
+
+.prot-instances {
+  margin: 14px 0 0 6px;
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 14px;
+}
+
+.prot-instances legend {
+  width: 100%;
+  margin-bottom: 6px;
+  color: var(--sub);
+}
+
+.prot-after {
+  margin: 22px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.prot-note {
+  margin: 28px 0 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.prot-hold {
+  margin: 38px 0 0 26px;
+  min-height: 20px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.prot-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 48px;
+  padding-right: 28px;
+}
+
+/* S22 */
+.detail-card {
+  padding: 16px 24px 30px 20px;
+  min-height: 274px;
+}
+
+.detail-body {
+  display: flex;
+  gap: 27px;
+  margin: 20px 0 0 7px;
+}
+
+.detail-body .detail-name {
+  margin-top: 4px;
+}
+
+.detail-stars {
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+.detail-name {
+  margin: 0;
+  font-size: 22px;
+  line-height: 32px;
+}
+
+.detail-counts {
+  margin: 20px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.detail-sub {
+  margin: 26px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.detail-warn {
+  margin: 36px 0 0 7px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.detail-card2 {
+  margin-top: 24px;
+  padding: 16px 24px 30px 20px;
+  min-height: 280px;
+}
+
+.detail-ship {
+  display: flex;
+  gap: 112px;
+  margin: 20px 0 0 7px;
+}
+
+.detail-ship .detail-name {
+  margin-top: 4px;
+}
+
+.detail-ship-sub {
+  margin: 14px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.detail-source {
+  margin: 28px 0 0 7px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.detail-source + .detail-source {
+  margin-top: 23px;
+}
+
+.detail-apply {
+  margin: 45px 0 0 26px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+@media (max-width: 1279px) {
+  .inv-bottom {
+    grid-template-columns: 1fr;
+  }
+}

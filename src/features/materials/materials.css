@@ -1,0 +1,137 @@
+/* 必要素材 S05 */
+.mat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.mat-goal {
+  width: 200px;
+}
+
+.mat-toggle {
+  width: 190px;
+}
+
+.mat-basis {
+  margin: 0 0 0 238px;
+  font-size: 13px;
+}
+
+.mat-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 370px);
+  gap: 20px;
+}
+
+.mat-stat {
+  height: 110px;
+  padding: 17px 20px;
+}
+
+.mat-stat-label {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.mat-stat-value {
+  margin: 4px 0 0 4px;
+  font-size: 28px;
+  line-height: 38px;
+}
+
+.mat-table-card {
+  margin-top: 26px;
+  min-height: 350px;
+  padding: 20px 16px 24px 24px;
+}
+
+.mat-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 820px;
+}
+
+.mat-table th,
+.mat-table td {
+  text-align: left;
+  font-weight: 400;
+  padding: 0;
+}
+
+.mat-table thead th {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+  height: 44px;
+  vertical-align: top;
+  padding-top: 3px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mat-table thead th:first-child {
+  width: 418px;
+  padding-left: 0;
+}
+
+.mat-table thead th:nth-child(2),
+.mat-table thead th:nth-child(3) {
+  width: 140px;
+}
+
+.mat-table thead th:nth-child(4) {
+  width: 135px;
+}
+
+.mat-table tbody th,
+.mat-table tbody td {
+  font-size: 15px;
+  line-height: 22px;
+  height: 61px;
+  vertical-align: top;
+  padding-top: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mat-table tbody tr:last-child th,
+.mat-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mat-table th:first-child,
+.mat-table td:first-child {
+  padding-left: 0;
+}
+
+.mat-planned {
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.mat-note {
+  margin: 36px 0 0 24px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.mat-note2 {
+  margin: 13px 0 0 24px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.mat-steps {
+  width: 240px;
+  margin-top: 25px;
+}
+
+@media (max-width: 1279px) {
+  .mat-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mat-basis {
+    margin-left: auto;
+  }
+}

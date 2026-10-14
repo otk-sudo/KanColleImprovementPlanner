@@ -1,0 +1,355 @@
+/* 取り込み S07/S08/S20/S26/S27 */
+.import-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.import-paste {
+  padding: 16px 24px 28px;
+  min-height: 425px;
+}
+
+.import-paste .card-title,
+.import-after .card-title,
+.import-file-preview .card-title,
+.import-scope-card .card-title,
+.import-noadd .card-title,
+.import-apply-card .card-title,
+.import-keep-card .card-title,
+.import-error-input .card-title,
+.import-error-retry .card-title {
+  margin-left: -4px;
+}
+
+.import-paste-desc {
+  margin: 18px 0 20px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--sub);
+}
+
+.import-textarea {
+  display: block;
+  resize: none;
+  margin-top: 4px;
+  height: 204px;
+  padding: 18px 20px;
+  font-size: 15px;
+  line-height: 22px;
+  background: var(--bg);
+}
+
+.import-textarea::placeholder {
+  color: var(--sub);
+}
+
+.import-note {
+  margin: 26px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1px;
+}
+
+.import-actions-split {
+  gap: 16px;
+  margin-top: 56px;
+}
+
+.import-after {
+  margin-top: 25px;
+  min-height: 170px;
+  padding: 16px 24px 24px;
+}
+
+.import-flow {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.import-after .import-note {
+  margin-top: 26px;
+}
+
+/* S08 */
+.import-drop-card {
+  padding: 24px;
+}
+
+.import-drop {
+  background: #e9f0f0;
+  border-radius: var(--radius-card);
+  height: 265px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 56px;
+  border: 2px dashed transparent;
+}
+
+.import-drop.is-dragging {
+  border-color: var(--primary);
+}
+
+.import-drop-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 34px;
+}
+
+.import-drop-sub {
+  margin: 17px 0 28px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--sub);
+}
+
+.import-file-preview {
+  margin-top: 24px;
+  padding: 16px 24px 24px;
+  min-height: 290px;
+}
+
+.import-file-line {
+  margin: 18px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.import-file-values {
+  margin: 23px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+  white-space: pre-wrap;
+}
+
+.import-file-preview .import-note {
+  margin-top: 20px;
+}
+
+.import-warnings {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.import-conflicts {
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.import-conflict {
+  border: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.import-conflict legend {
+  font-weight: 500;
+}
+
+.import-conflict-option {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: 18px;
+}
+
+/* S20 */
+.import-error-banner {
+  padding: 18px 25px 20px;
+  min-height: 91px;
+}
+
+.import-error-title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 28px;
+}
+
+.import-error-msg {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.import-error-input {
+  margin-top: 22px;
+  padding: 16px 24px 28px;
+}
+
+.import-error-snippet {
+  margin: 22px 0 0 2px;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--sub);
+}
+
+.import-error-kept {
+  margin: 30px 0 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.import-error-actions {
+  margin: 30px 0 0 2px;
+  gap: 20px;
+}
+
+.import-kind-picker {
+  margin-top: 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.import-kind-picker .field-label {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.import-error-retry {
+  margin-top: 22px;
+  padding: 16px 24px 28px;
+  min-height: 278px;
+}
+
+.import-error-step {
+  margin: 28px 0 0 2px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.import-error-step + .import-error-step {
+  margin-top: 29px;
+}
+
+.import-error-foot {
+  margin: 29px 0 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--sub);
+}
+
+/* S26 */
+.import-ok-banner {
+  font-size: 18px;
+  line-height: 26px;
+  padding: 22px 24px;
+  min-height: 72px;
+}
+
+.import-scope-card {
+  margin-top: 24px;
+  padding: 16px 24px 24px;
+  min-height: 347px;
+}
+
+.import-scope-grid {
+  display: grid;
+  grid-template-columns: 367px 367px 1fr;
+  row-gap: 51px;
+  margin: 33px 0 0 3px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.import-scope-grid dt,
+.import-scope-grid dd {
+  margin: 0;
+}
+
+.import-captured {
+  margin: 54px 0 0 2px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+.import-noadd {
+  margin-top: 20px;
+  padding: 16px 24px 24px;
+  min-height: 130px;
+}
+
+.import-noadd p {
+  margin: 12px 0 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--sub);
+}
+
+.import-bottom-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 32px;
+}
+
+/* S27 */
+.import-apply-card {
+  padding: 16px 24px 24px;
+  min-height: 210px;
+}
+
+.import-apply-row {
+  display: grid;
+  grid-template-columns: 326px 370px 1fr;
+  align-items: baseline;
+  margin: 12px 0 0 2px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.import-apply-after {
+  font-size: 22px;
+  line-height: 32px;
+  color: var(--primary);
+}
+
+.import-apply-note {
+  margin: 28px 0 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.import-keep-card {
+  margin-top: 24px;
+  padding: 16px 24px 28px;
+}
+
+.import-keep-item {
+  margin: 18px 0 0 2px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.import-keep-item + .import-keep-item {
+  margin-top: 27px;
+}
+
+.import-keep-note {
+  margin: 33px 0 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--sub);
+}
+
+.import-keep-warn {
+  margin: 21px 0 0 2px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--warn);
+}

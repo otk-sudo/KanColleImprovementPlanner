@@ -1,0 +1,278 @@
+/* 設定 S10/S21/S32 */
+.set-top {
+  display: grid;
+  grid-template-columns: 730px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.set-week,
+.set-holiday {
+  min-height: 339px;
+  padding: 16px 24px 24px 20px;
+}
+
+.set-week .card-title,
+.set-holiday .card-title,
+.set-backup .card-title,
+.restore-card .card-title,
+.rm-card .card-title {
+  margin-left: 0;
+}
+
+.set-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 83px);
+  column-gap: 13px;
+  margin-top: 26px;
+}
+
+.set-week-label {
+  display: block;
+  padding-left: 12px;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.set-week-select {
+  display: block;
+  margin-top: 18px;
+}
+
+.set-week-note {
+  margin: 36px 0 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.set-week-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin: 49px 0 0 4px;
+}
+
+.set-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--sub);
+}
+
+.set-search .select {
+  width: 110px;
+}
+
+.set-field-label {
+  display: block;
+  margin: 31px 0 0 4px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+.set-gap {
+  margin-top: 22px;
+}
+
+.set-date {
+  display: block;
+  margin: 9px 0 0 4px;
+  width: 350px;
+  max-width: calc(100% - 4px);
+}
+
+.set-holiday-add {
+  margin: 33px 0 0 4px;
+}
+
+.set-holiday-list {
+  list-style: none;
+  margin: 14px 0 0 4px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.set-backup {
+  margin-top: 21px;
+  min-height: 303px;
+  padding: 16px 24px 24px 20px;
+}
+
+.set-backup-text {
+  margin: 21px 0 0 4px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.set-backup-actions {
+  display: flex;
+  gap: 22px;
+  margin: 36px 0 0 4px;
+}
+
+.set-backup-note {
+  margin: 27px 0 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.set-backup-note2 {
+  margin: 19px 0 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.set-master-line {
+  margin: 16px 0 0 4px;
+  font-size: 12px;
+}
+
+.set-master {
+  margin-top: 20px;
+  padding: 16px 24px 24px;
+  border: 2px solid var(--warn-bg);
+}
+
+/* S21 */
+.restore-card {
+  padding: 16px 26px 24px 20px;
+  min-height: 492px;
+}
+
+.restore-file {
+  margin: 22px 0 0 6px;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.restore-date {
+  margin: 18px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.restore-grid {
+  display: grid;
+  grid-template-columns: 336px 1fr;
+  row-gap: 42px;
+  margin: 47px 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.restore-grid dt,
+.restore-grid dd {
+  margin: 0;
+}
+
+.restore-warn {
+  margin: 51px 0 0 6px;
+  padding: 20px 20px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.restore-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 43px;
+}
+
+.restore-foot {
+  margin: 50px 0 0 26px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.restore-error {
+  margin-bottom: 20px;
+}
+
+.restore-error-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+/* S32 */
+.rm-card {
+  padding: 16px 24px 24px 20px;
+  min-height: 230px;
+}
+
+.rm-line {
+  margin: 14px 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.rm-line2 {
+  margin: 27px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.rm-line3 {
+  margin: 28px 0 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.rm-warn {
+  margin-top: 23px;
+  min-height: 228px;
+  padding: 22px 26px;
+}
+
+.rm-warn-title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 28px;
+  font-weight: 400;
+}
+
+.rm-warn-line {
+  margin: 20px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text);
+}
+
+.rm-check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 26px;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rm-warn-note {
+  margin: 26px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.rm-note {
+  margin: 36px 0 0 26px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.rm-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 64px;
+  padding-right: 28px;
+}
+
+@media (max-width: 1279px) {
+  .set-top {
+    grid-template-columns: 1fr;
+  }
+  .set-week-grid {
+    grid-template-columns: repeat(7, minmax(64px, 1fr));
+  }
+}

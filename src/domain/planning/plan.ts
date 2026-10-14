@@ -76,14 +76,15 @@ export function costItems(cost: AttemptCost, mode: GuaranteeMode): { key: CostKe
   const push = (key: CostKey, amount: number) => {
     if (amount > 0) out.push({ key, amount });
   };
+  // 表示順：改修資材（ネジ）→ 開発資材（釘）→ 素材装備 → アイテム → 燃料・弾薬・鋼材・ボーキ
+  push('resource:8', mode === 'guaranteed' ? cost.screws.guaranteed : cost.screws.normal);
+  push('resource:7', mode === 'guaranteed' ? cost.devmats.guaranteed : cost.devmats.normal);
+  for (const e of cost.equipment) push(`equipment:${e.equipmentId}`, e.count);
+  for (const u of cost.useItems) push(`item:${u.useItemId}`, u.count);
   push('resource:1', cost.fuel);
   push('resource:2', cost.ammo);
   push('resource:3', cost.steel);
   push('resource:4', cost.bauxite);
-  push('resource:7', mode === 'guaranteed' ? cost.devmats.guaranteed : cost.devmats.normal);
-  push('resource:8', mode === 'guaranteed' ? cost.screws.guaranteed : cost.screws.normal);
-  for (const e of cost.equipment) push(`equipment:${e.equipmentId}`, e.count);
-  for (const u of cost.useItems) push(`item:${u.useItemId}`, u.count);
   return out;
 }
 
