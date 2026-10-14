@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" role="img" aria-labelledby="title desc">
+<title id="title">艦これ改修スケジューラの全体像</title><desc id="desc">入力、計画計算、カレンダー、実績、翌日の再配置と保存の関係を示します。個人データはブラウザに保存します。</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10" fill="#637680"/></marker></defs>
+<rect width="1280" height="800" fill="#f3f6f7"/>
+<g font-family="'Noto Sans JP','Yu Gothic',sans-serif" fill="#18313b">
+<text x="48" y="62" font-size="30" font-weight="bold">改修計画ができるまで</text><text x="48" y="100" font-size="17">入力・計算・表示・保存を分け、変更する場所を追いやすくする基本設計</text>
+<g fill="white" stroke="#cbd8dd" stroke-width="2"><rect x="48" y="152" width="280" height="230" rx="16"/><rect x="392" y="152" width="416" height="230" rx="16"/><rect x="872" y="152" width="360" height="230" rx="16"/><rect x="48" y="468" width="360" height="205" rx="16"/><rect x="470" y="468" width="340" height="205" rx="16"/><rect x="872" y="468" width="360" height="205" rx="16"/></g>
+<g font-size="23" font-weight="bold" fill="#087f80"><text x="72" y="195">1　データを用意</text><text x="416" y="195">2　必要数と日程を計算</text><text x="896" y="195">3　予定を確認</text><text x="72" y="511">ブラウザ内に保存</text><text x="494" y="511">翌日の見直し</text><text x="896" y="511">4　実際の結果を記録</text></g>
+<g font-size="18"><text x="72" y="242">所持装備・艦娘・資材</text><text x="72" y="280">目標の装備・★・個数</text><text x="72" y="318">曜日別の回数・休み</text>
+<text x="416" y="242">既存の完成品を保護</text><text x="416" y="280">工程を作成 → 素材を重複なく割当</text><text x="416" y="318">担当艦・曜日・休みを照合</text>
+<text x="896" y="242">月・週カレンダー／日別詳細</text><text x="896" y="280" fill="#94600a">資材不足 → 警告付き仮配置</text><text x="896" y="318">担当艦不在 → 理由付き未配置</text>
+<text x="72" y="554">所持・目標・設定・実績</text><text x="72" y="593">計画と実績を分けて管理</text><text x="72" y="632">バックアップで持ち出し・復元</text>
+<text x="494" y="554">日本時間で日付を判定</text><text x="494" y="593">未実施だけを再配置</text><text x="494" y="632">再起動・別タブでも重複なし</text>
+<text x="896" y="554">成功／失敗／スキップ</text><text x="896" y="593">実消費を確認して保存</text><text x="896" y="632">スキップは無消費・★据置</text></g>
+<g stroke="#637680" stroke-width="3" fill="none" marker-end="url(#arrow)"><path d="M328 265 H381"/><path d="M808 265 H861"/><path d="M1052 382 V456"/><path d="M872 570 H822"/><path d="M640 468 V394"/><path d="M470 570 H420"/></g>
+<text x="48" y="732" font-size="18">設計書の読み方：全体構成 → データの関係 → 処理の流れ → 保守・変更箇所</text>
+<text x="48" y="771" font-size="14" fill="#637680">基本設計 v1 ・ 実装前の提案を含む ・ ゲームの自動操作／個人データのサーバー送信は行わない</text>
+</g></svg>

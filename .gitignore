@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+private/
+work/
+*.log
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db
+
+# Local design screenshots; publication rights not verified
+/docs/ui-reference/screens/*.png
