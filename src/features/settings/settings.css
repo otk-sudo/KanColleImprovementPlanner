@@ -142,13 +142,13 @@
 }
 
 .restore-file {
-  margin: 22px 0 0 6px;
+  margin: 29px 0 0 6px;
   font-size: 17px;
   line-height: 24px;
 }
 
 .restore-date {
-  margin: 18px 0 0 6px;
+  margin: 20px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -157,7 +157,7 @@
   display: grid;
   grid-template-columns: 336px 1fr;
   row-gap: 42px;
-  margin: 47px 0 0 6px;
+  margin: 45px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
 }
@@ -168,8 +168,8 @@
 }
 
 .restore-warn {
-  margin: 51px 0 0 6px;
-  padding: 20px 20px;
+  margin: 53px 0 0 6px;
+  padding: 22px 20px 23px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -177,11 +177,11 @@
 .restore-actions {
   display: flex;
   justify-content: space-between;
-  margin-top: 43px;
+  margin-top: 42px;
 }
 
 .restore-foot {
-  margin: 50px 0 0 26px;
+  margin: 48px 0 0 26px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -201,28 +201,34 @@
   min-height: 230px;
 }
 
+/* 参照の S32 はカード・警告欄の幅が他画面より 4px 狭い */
+.rm-card,
+.rm-warn {
+  margin-right: 4px;
+}
+
 .rm-line {
-  margin: 14px 0 0 6px;
+  margin: 17px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
 }
 
 .rm-line2 {
-  margin: 27px 0 0 6px;
+  margin: 31px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
 
 .rm-line3 {
-  margin: 28px 0 0 6px;
+  margin: 30px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .rm-warn {
-  margin-top: 23px;
-  min-height: 228px;
-  padding: 22px 26px;
+  margin-top: 22px;
+  min-height: 230px;
+  padding: 21px 26px 22px;
 }
 
 .rm-warn-title {
@@ -233,15 +239,21 @@
 }
 
 .rm-warn-line {
-  margin: 20px 0 0;
+  margin: 23px 0 0;
   font-size: 15px;
   line-height: 22px;
   color: var(--text);
 }
 
+.rm-check:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .rm-check {
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   margin-top: 26px;
   font-size: 15px;
@@ -250,13 +262,13 @@
 }
 
 .rm-warn-note {
-  margin: 26px 0 0;
+  margin: 28px 0 0;
   font-size: 14px;
   line-height: 20px;
 }
 
 .rm-note {
-  margin: 36px 0 0 26px;
+  margin: 35px 0 0 26px;
   font-size: 13px;
   line-height: 18px;
 }
@@ -264,7 +276,7 @@
 .rm-actions {
   display: flex;
   justify-content: space-between;
-  margin-top: 64px;
+  margin-top: 57px;
   padding-right: 28px;
 }
 

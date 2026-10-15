@@ -199,13 +199,13 @@
 }
 
 .draft-outcome {
-  margin: 14px 0 0 6px;
+  margin: 18px 0 0 6px;
   font-size: 18px;
   line-height: 26px;
 }
 
 .draft-values {
-  margin: 26px 0 0 6px;
+  margin: 29px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
   white-space: pre-wrap;
@@ -214,21 +214,33 @@
 .draft-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 31px 0 0 6px;
+  gap: 2px;
+  margin: 32px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
   cursor: pointer;
 }
 
+/* 参照は確認済みを「✓」の文字で示すため、チェックボックスは視覚的に隠して文字で状態を表す */
+.draft-check:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.draft-check-mark {
+  display: inline-block;
+  min-width: 1em;
+}
+
 .draft-card2 {
-  margin-top: 25px;
-  padding: 16px 24px 24px 20px;
+  margin-top: 24px;
+  padding: 15px 24px 24px 20px;
   min-height: 250px;
 }
 
 .draft-line {
-  margin: 16px 0 0 6px;
+  margin: 17px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -238,13 +250,14 @@
 }
 
 .draft-line:last-child {
+  margin-top: 24px;
   font-size: 14px;
 }
 
 .draft-actions {
   display: flex;
   gap: 92px;
-  margin-top: 85px;
+  margin-top: 84px;
 }
 
 .draft-actions .btn:last-child {
@@ -253,8 +266,10 @@
 
 /* S34 */
 .past-card {
-  padding: 16px 30px 24px 20px;
+  padding: 16px 30px 16px 20px;
   min-height: 480px;
+  /* 参照の S34 はカード幅が他画面より 4px 狭い */
+  margin-right: 4px;
 }
 
 .past-head {
@@ -294,29 +309,61 @@
   line-height: 24px;
 }
 
-.past-answer label {
-  cursor: pointer;
+/* 選んだ扱いを文字で表示し、透明な select を重ねて操作する */
+.past-choice {
+  position: relative;
+  display: inline-block;
+  align-self: flex-start;
 }
 
-.past-answer input {
+.past-choice-native {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
+  cursor: pointer;
+  border: none;
 }
 
-.past-answer label:focus-within {
+.past-choice-face {
+  display: block;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.past-choice-face.is-unanswered {
+  font-size: 15px;
+}
+
+.past-choice:focus-within .past-choice-face {
   outline: 3px solid #1d9a9b;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 参照では確定できない理由を通常の副ボタンと同じ色で示す */
+.past-actions .btn[disabled]:not(.btn-primary) {
+  background: var(--secondary);
+  color: var(--text);
 }
 
 .past-change {
+  margin-top: -4px;
   font-size: 15px;
   line-height: 32px;
   white-space: pre-line;
 }
 
+/* 行の間隔は 80px。最後の行の下は警告欄との間隔で取る */
+.past-row:last-of-type {
+  min-height: 0;
+}
+
 .past-warn {
-  margin: 6px 0 0 6px;
-  padding: 16px 18px;
-  min-height: 91px;
+  margin: 43px 0 0 6px;
+  padding: 14px 18px 16px;
+  min-height: 92px;
 }
 
 .past-warn-main {
@@ -347,7 +394,7 @@
 .past-actions {
   display: flex;
   gap: 52px;
-  margin-top: 66px;
+  margin-top: 62px;
   padding-right: 28px;
 }
 

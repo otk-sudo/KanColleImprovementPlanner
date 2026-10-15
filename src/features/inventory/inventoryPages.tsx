@@ -225,7 +225,7 @@ export function ShipInventoryPage() {
           所持情報がない場合
         </h2>
         <p className="inv-ship-note-text">装備のみ取り込んだ場合、艦娘は「不明」です。未所持とは区別し、自動配置を保留します。</p>
-        <p className="inv-ship-updated">最終更新：{projection.ships.importedAt ? `${formatJstDateTime(projection.ships.importedAt)} JST（取り込み日時）` : '未取得'}</p>
+        <p className="inv-ship-updated">最終更新：{projection.ships.importedAt ? `${formatJstDateTime(projection.ships.importedAt)} JST` : '未取得'}</p>
       </section>
       <p className="inv-image-note">{IMAGES_ENABLED ? '画像は設定された配信元から表示しています。' : '画像は配布条件の確認待ちのため表示していません。名称と状態で判定できます。'}</p>
     </Page>
@@ -288,7 +288,7 @@ export function ItemsInventoryPage() {
             </tbody>
           </table>
         </div>
-        <p className="inv-items-foot text-sub">最終更新：{updated ? `${formatJstDateTime(updated)} JST（取り込み日時）` : '未取得'} ／ 不明な値を 0 として計算しません。</p>
+        <p className="inv-items-foot text-sub">最終更新：{updated ? `${formatJstDateTime(updated)} JST` : '未取得'} ／ 不明な値を 0 として計算しません。</p>
       </section>
     </Page>
   );

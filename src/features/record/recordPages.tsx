@@ -406,7 +406,11 @@ export function DraftConfirmPage() {
             .join('　　')}
         </p>
         <label className={`draft-check ${checked ? 'text-ok' : ''}`}>
-          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} /> {checked ? '✓ ' : ''}ゲームで実施済みです（入力途中のメモとは異なります）
+          <input type="checkbox" className="visually-hidden" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+          <span className="draft-check-mark" aria-hidden="true">
+            {checked ? '✓' : '□'}
+          </span>
+          ゲームで実施済みです（入力途中のメモとは異なります）
         </label>
       </section>
       <section className="card draft-card2" aria-labelledby="draft-rule-title">
@@ -448,6 +452,12 @@ function scopeLastImport(data: AppData, scope: ScopeKey): string | null {
   return data.baselines.find((b) => b.scope === scope)?.importedAt ?? null;
 }
 
+const SCOPE_ORDER: string[] = ['equipment', 'resource:8', 'resource:7', 'resource:5', 'resource:6', 'resource:1', 'resource:2', 'resource:3', 'resource:4'];
+const scopeOrder = (s: ScopeKey) => {
+  const i = SCOPE_ORDER.indexOf(s);
+  return i >= 0 ? i : SCOPE_ORDER.length;
+};
+
 export function PastRecordPage() {
   const { attemptId = '' } = useParams();
   const { data, master, today, projection, formCache, run, busy } = useStore();
@@ -474,11 +484,18 @@ export function PastRecordPage() {
   const attempt = ctx.attempt;
   const form = cached;
   const result = deltasFromForm(form, rows, attempt.transition);
-  const scopes = scopesOfDeltas(result.deltas);
+  // 表示順は装備 → ネジ → 釘 → その他資材 → アイテム（他画面の資材の並びと同じ）
+  const scopes = [...scopesOfDeltas(result.deltas)].sort((a, b) => scopeOrder(a) - scopeOrder(b) || a.localeCompare(b));
   const fixed = fixedHistoryOnlyScopes({ originalSequence: data.meta.nextSequence, fromDraftId: form.draftId }, scopes, data.baselines);
   const unanswered = scopes.filter((s) => !fixed.includes(s) && !answers[s]);
   const valueAfter = (s: ScopeKey): string => {
-    if (answers[s] !== 'apply') return answers[s] === 'historyOnly' || fixed.includes(s) ? '変更なし' : '回答後に表示';
+    if (answers[s] !== 'apply') {
+      if (answers[s] !== 'historyOnly' && !fixed.includes(s)) return '回答後に表示';
+      if (s === 'equipment') return '変更なし';
+      const id = Number(s.split(':')[1]);
+      const cur = s.startsWith('resource:') ? projection.resources.get(id)?.value : projection.items.get(id)?.value;
+      return cur === undefined ? '変更なし' : `${cur} → ${cur}（変更なし）`;
+    }
     if (s === 'equipment') {
       return result.deltas
         .filter((d) => d.scope === 'equipment')
@@ -557,16 +574,20 @@ export function PastRecordPage() {
                 {isFixed ? (
                   <span className="text-ok">● 履歴だけに記録（取り込み済みのため固定）</span>
                 ) : (
-                  <>
-                    <label className={answers[s] === 'apply' ? 'text-ok' : answers[s] ? 'text-sub' : 'text-warn'}>
-                      <input type="radio" name={`ans-${s}`} checked={answers[s] === 'apply'} onChange={() => setAnswers({ ...answers, [s]: 'apply' })} />
-                      {answers[s] === 'apply' ? '●' : '○'} 所持数に反映
-                    </label>
-                    <label className={answers[s] === 'historyOnly' ? 'text-ok' : answers[s] ? 'text-sub' : 'text-warn'}>
-                      <input type="radio" name={`ans-${s}`} checked={answers[s] === 'historyOnly'} onChange={() => setAnswers({ ...answers, [s]: 'historyOnly' })} />
-                      {answers[s] === 'historyOnly' ? '●' : '○'} 履歴だけに記録
-                    </label>
-                  </>
+                  // 参照どおり選んだ扱いだけを1行で表示し、押すと2択（所持数に反映／履歴だけに記録）を開く。
+                  // 初期値は未選択で、取込日時から自動選択しない
+                  <span className="past-choice">
+                    <select className="past-choice-native" aria-label={`${scopeName(s)}の今回の実績の扱い`} value={answers[s] ?? ''} onChange={(e) => setAnswers({ ...answers, [s]: e.target.value as 'apply' | 'historyOnly' })}>
+                      <option value="" disabled>
+                        未選択
+                      </option>
+                      <option value="apply">所持数に反映</option>
+                      <option value="historyOnly">履歴だけに記録</option>
+                    </select>
+                    <span className={`past-choice-face ${answers[s] ? 'text-ok' : 'text-warn is-unanswered'}`} aria-hidden="true">
+                      {answers[s] === 'apply' ? '● 所持数に反映' : answers[s] === 'historyOnly' ? '● 履歴だけに記録' : '未選択：反映 / 履歴のみ'}
+                    </span>
+                  </span>
                 )}
               </div>
               <div className={`past-change ${answers[s] || isFixed ? '' : 'text-sub'}`}>{valueAfter(s)}</div>

@@ -169,7 +169,7 @@
 
 /* S20 */
 .import-error-banner {
-  padding: 18px 25px 20px;
+  padding: 16px 25px 19px;
   min-height: 91px;
 }
 
@@ -187,24 +187,24 @@
 
 .import-error-input {
   margin-top: 22px;
-  padding: 16px 24px 28px;
+  padding: 15px 24px 28px;
 }
 
 .import-error-snippet {
-  margin: 22px 0 0 2px;
+  margin: 26px 0 0 2px;
   font-size: 16px;
   line-height: 24px;
   color: var(--sub);
 }
 
 .import-error-kept {
-  margin: 30px 0 0 2px;
+  margin: 33px 0 0 2px;
   font-size: 15px;
   line-height: 22px;
 }
 
 .import-error-actions {
-  margin: 30px 0 0 2px;
+  margin: 41px 0 0 2px;
   gap: 20px;
 }
 
@@ -298,6 +298,10 @@
   margin-top: 32px;
 }
 
+.import-confirm-actions {
+  margin-top: 104px;
+}
+
 /* S27 */
 .import-apply-card {
   padding: 16px 24px 24px;
@@ -307,20 +311,21 @@
 .import-apply-row {
   display: grid;
   grid-template-columns: 326px 370px 1fr;
-  align-items: baseline;
-  margin: 12px 0 0 2px;
+  align-items: start;
+  margin: 18px 0 0 2px;
   font-size: 16px;
   line-height: 24px;
 }
 
 .import-apply-after {
+  margin-top: 1px;
   font-size: 22px;
   line-height: 32px;
   color: var(--primary);
 }
 
 .import-apply-note {
-  margin: 28px 0 0 2px;
+  margin: 37px 0 0 2px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -328,6 +333,7 @@
 .import-keep-card {
   margin-top: 24px;
   padding: 16px 24px 28px;
+  min-height: 275px;
 }
 
 .import-keep-item {
@@ -341,14 +347,14 @@
 }
 
 .import-keep-note {
-  margin: 33px 0 0 2px;
+  margin: 35px 0 0 2px;
   font-size: 15px;
   line-height: 22px;
   color: var(--sub);
 }
 
 .import-keep-warn {
-  margin: 21px 0 0 2px;
+  margin: 22px 0 0 2px;
   font-size: 14px;
   line-height: 20px;
   color: var(--warn);

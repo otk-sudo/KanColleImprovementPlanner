@@ -33,18 +33,20 @@ function entry(helpers: RecipeEntryFile['helpers'], p1: RecipeEntryFile['cost'][
   return { entryIndex: 0, helpers, convert, cost: { ...zero, p1, p2, conv, extra: [] } };
 }
 
-export function screenMaster(opts: { mainDays?: number[]; names?: Partial<Record<number, string>> } = {}): MasterFile {
+export function screenMaster(opts: { mainDays?: number[]; names?: Partial<Record<number, string>>; mainWithoutMaterial?: boolean } = {}): MasterFile {
   const m = fixtureMaster({ masterVersion: 'screen-fixture-v1' });
   const rename = (id: number, name: string) => {
     const e = m.equipment.find((x) => x.id === id);
     if (e) e.name = name;
     const s = m.ships.find((x) => x.id === id);
     if (s) s.name = name;
+    const u = m.useItems.find((x) => x.id === id);
+    if (u) u.name = name;
   };
   for (const [id, name] of Object.entries(opts.names ?? {})) rename(Number(id), name!);
   m.recipes = [
     // 主砲A：★6まで ネジ3/4・釘4/6・素材装備A 2、★7以降はネジ・素材なし（S01・S19 の例に合わせる）
-    { equipmentId: ID.mainGunA, entries: [entry([{ shipIds: [ID.shipAKai2], days: opts.mainDays ?? [1, 3, 5] }], stage({ devmats: 4, devmatsGuaranteed: 6, screws: 3, screwsGuaranteed: 4, equipment: [{ equipmentId: ID.materialA, count: 2 }] }), stage({ devmats: 2, devmatsGuaranteed: 3 }))] },
+    { equipmentId: ID.mainGunA, entries: [entry([{ shipIds: [ID.shipAKai2], days: opts.mainDays ?? [1, 3, 5] }], stage({ devmats: 4, devmatsGuaranteed: 6, screws: 3, screwsGuaranteed: 4, equipment: opts.mainWithoutMaterial ? [] : [{ equipmentId: ID.materialA, count: 2 }] }), stage({ devmats: 2, devmatsGuaranteed: 3 }))] },
     { equipmentId: ID.secondaryB, entries: [entry([{ shipIds: [ID.shipBKai2], days: ALL }], stage({ devmats: 2, devmatsGuaranteed: 3, screws: 1, screwsGuaranteed: 2 }), stage({ devmats: 3, devmatsGuaranteed: 4, screws: 2, screwsGuaranteed: 3 }))] },
     { equipmentId: ID.aaGunC, entries: [entry([], stage({ devmats: 1, devmatsGuaranteed: 2, screws: 1, screwsGuaranteed: 1 }), stage({ devmats: 2, devmatsGuaranteed: 3, screws: 1, screwsGuaranteed: 2 }))] },
     { equipmentId: ID.radarC, entries: [entry([{ shipIds: [ID.shipAKai2], days: ALL }], stage({ devmats: 2, devmatsGuaranteed: 3, screws: 2, screwsGuaranteed: 3 }), stage({ devmats: 3, devmatsGuaranteed: 4, screws: 3, screwsGuaranteed: 4 }))] },

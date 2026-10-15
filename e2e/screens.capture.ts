@@ -98,7 +98,8 @@ test('S01 カレンダー', async ({ page }) => {
 });
 
 test('S02 週間予定', async ({ page }) => {
-  const m = screenMaster({ mainDays: [1, 3, 5, 6, 0] });
+  // S02 の参照は「ネジ4 / 釘6」だけの例（素材装備を含まない）
+  const m = screenMaster({ mainDays: [1, 3, 5, 6, 0], mainWithoutMaterial: true });
   const past = hist('2026-10-12', 1, imp(ID.mainGunA, 5), 'success');
   await open(
     page,
@@ -252,7 +253,8 @@ test('S16 所持艦娘', async ({ page }) => {
 });
 
 test('S17 資材・アイテム', async ({ page }) => {
-  await open(page, main, goalSpec(), '/inventory/items');
+  // S17 の参照は同じ使用アイテムを「更新用アイテム」と表記している（S05 は「更新用アイテムB」）
+  await open(page, screenMaster({ names: { [ID.itemB]: '更新用アイテム' } }), goalSpec(), '/inventory/items');
   await shot(page, 'S17');
 });
 
@@ -346,14 +348,15 @@ test('S27 最新の所持データを反映', async ({ page }) => {
 });
 
 test('S28 実施済み・消費確認待ち', async ({ page }) => {
-  await open(page, main, calendarSpec(), '/calendar');
+  // S28 の参照は素材装備A を「素材装備」と表記している
+  await open(page, screenMaster({ names: { [ID.materialA]: '素材装備' } }), calendarSpec(), '/calendar');
   const id = await todayAttemptId(page);
   await page.goto(`/#/attempts/${encodeURIComponent(id)}/record`);
   await page.getByRole('radio', { name: '失敗' }).click();
   await page.getByLabel('改修資材').fill('4');
   await page.getByRole('button', { name: '実施済み・確認待ち' }).click();
   await page.waitForURL(/draft/);
-  await page.getByRole('checkbox').check();
+  await page.getByText('ゲームで実施済みです').click();
   await shot(page, 'S28');
 });
 
@@ -381,7 +384,7 @@ async function recordPast(page: Page, answers: Record<string, string>) {
   await page.getByRole('button', { name: '種類ごとの反映を確認' }).click();
   await page.waitForURL(/past/);
   for (const [label, choice] of Object.entries(answers)) {
-    await page.getByRole('group', { name: new RegExp(label) }).getByText(choice).click();
+    await page.getByRole('group', { name: new RegExp(label) }).getByRole('combobox').selectOption({ label: choice });
   }
 }
 
@@ -424,18 +427,22 @@ test('S31 確認待ちの記録を訂正', async ({ page }) => {
   await page.getByRole('radio', { name: '失敗' }).click();
   await page.getByLabel('改修資材').fill('4');
   await page.getByRole('button', { name: '実施済み・確認待ち' }).click();
-  await page.getByRole('checkbox').check();
+  await page.getByText('ゲームで実施済みです').click();
   await page.getByRole('button', { name: '実施済み・確認待ちで保存' }).click();
   await page.waitForURL(/history/);
   await page.getByRole('link', { name: '実施していなかった' }).click();
   await page.waitForURL(/cancel/);
+  // 参照は理由欄に入力済み（確定ボタンが有効）の状態
+  await page.getByLabel('訂正理由（必須）').fill('例：予定を実績と取り違えて登録していました。');
   await shot(page, 'S31');
 });
 
 test('S32 マスター不足のバックアップを復元', async ({ page }) => {
   await open(page, main, goalSpec(), '/settings');
-  await pickBackup(page, { ...goalSpec(), masterVersion: 'sample-v2' }, 'kaishu-backup-20261013.json');
-  await page.getByRole('checkbox').check();
+  // 参照の例は目標3件のバックアップ
+  const goals = [...goalSpec().goals!, goal({ goalId: 'g-b', equipmentId: ID.secondaryB, targetStar: 6, priority: 3 })];
+  await pickBackup(page, { ...goalSpec(), goals, masterVersion: 'sample-v2' }, 'kaishu-backup-20261013.json');
+  await page.getByText('予定が保留のままになることを確認しました').click();
   await shot(page, 'S32');
 });
 
@@ -445,7 +452,8 @@ test('S33 保護設定を確認', async ({ page }) => {
 });
 
 test('S34 過去の実績と所持数への反映', async ({ page }) => {
-  await open(page, main, rolledSpec(null), '/history');
+  // S34 の参照は★の変化だけを示す例（素材装備の消費を含まない）
+  await open(page, screenMaster({ mainWithoutMaterial: true }), rolledSpec(null), '/history');
   await recordPast(page, { '^装備': '所持数に反映', '改修資材': '履歴だけに記録' });
   await shot(page, 'S34');
 });

@@ -19,6 +19,8 @@ interface RestoreSession {
   fileName: string;
   check: BackupCheck;
   preSaved: boolean;
+  /** S32 で「予定が保留のままになること」を確認済み（必要マスター不足のときだけ使う） */
+  holdConfirmed: boolean;
 }
 
 function download(name: string, text: string) {
@@ -41,7 +43,7 @@ function useBackupPicker() {
     if (!f) return;
     const text = await f.text();
     const check = parseBackup(text, master.version);
-    formCache.set('restore', { fileName: f.name, check, preSaved: false } satisfies RestoreSession);
+    formCache.set('restore', { fileName: f.name, check, preSaved: false, holdConfirmed: false } satisfies RestoreSession);
     navigate(check.ok && check.masterMissing ? '/settings/restore/master' : '/settings/restore');
   };
   const input = <input ref={ref} type="file" accept=".json,application/json" hidden onChange={(e) => void onFile(e.target.files?.[0]).finally(() => (e.target.value = ''))} />;
@@ -231,7 +233,7 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   const navigate = useNavigate();
   const session = useRestore();
   const picker = useBackupPicker();
-  const [confirmHold, setConfirmHold] = useState(false);
+  const [confirmHold, setConfirmHold] = useState(session?.holdConfirmed ?? false);
   const [preSaved, setPreSaved] = useState(session?.preSaved ?? false);
   const [message, setMessage] = useState<string | null>(null);
   const [epoch] = useState(() => newId('epoch'));
@@ -244,7 +246,7 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   };
   const restore = async () => {
     if (!session?.check.ok) return;
-    const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, confirmedPlanHold: confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
+    const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, confirmedPlanHold: session.holdConfirmed || confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
     if (!r.ok) return setMessage(r.message);
     formCache.delete('restore');
     await service.rollover();
@@ -298,7 +300,12 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   }
   const s = summarizeBackup(check.backup);
   const scopes = [s.scopes.includes('equipment') ? '装備' : null, s.scopes.includes('ships') ? '艦娘' : null, s.scopes.some((x) => x.startsWith('resource:')) ? '資材' : null, s.scopes.some((x) => x.startsWith('item:')) ? 'アイテム' : null].filter(Boolean);
-  if (masterMode || check.masterMissing) {
+  // 必要マスターが不足するときは、先に S32 で計算保留を確認してから S21 の復元前確認へ戻る
+  if (masterMode || (check.masterMissing && !session.holdConfirmed)) {
+    const backToConfirm = () => {
+      formCache.set('restore', { ...session, holdConfirmed: true });
+      navigate('/settings/restore');
+    };
     return (
       <Page nav="settings" title="マスター不足のバックアップを復元" top={196} sub="ファイルの構造は正常です。予定の再計算に必要なマスターが見つかりません。">
         {message ? (
@@ -313,7 +320,7 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
           <p className="rm-line">所持データ・目標・設定・実績は、バックアップの状態に置き換えます。</p>
           <p className="rm-line2">過去の結果は保存済みの改修条件で表示できます。</p>
           <p className="rm-line3 text-sub">
-            ファイル：{session.fileName} ／ 目標 {s.goals}件 ／ 必要マスター {check.backup.masterVersion}（同梱：{master.version}）
+            目標 {s.goals}件 ／ 必要マスター {check.backup.masterVersion}（利用中：{master.version}・保存形式 v{check.backup.schemaVersion}）
           </p>
         </section>
         <section className="banner banner-warn rm-warn" aria-labelledby="rm-warn-title">
@@ -322,7 +329,11 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
           </h2>
           <p className="rm-warn-line">対応するマスターを適用し、変更された改修経路を確認すると再計算できます。</p>
           <label className="rm-check">
-            <input type="checkbox" checked={confirmHold} onChange={(e) => setConfirmHold(e.target.checked)} /> 予定が保留のままになることを確認しました
+            <input type="checkbox" className="visually-hidden" checked={confirmHold} onChange={(e) => setConfirmHold(e.target.checked)} />
+            <span className="rm-check-mark" aria-hidden="true">
+              {confirmHold ? '☑' : '☐'}
+            </span>
+            予定が保留のままになることを確認しました
           </label>
           <p className="rm-warn-note">破損したファイル・非対応の保存形式は、この操作でも復元できません。</p>
         </section>
@@ -331,15 +342,9 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
           <Link className="btn" to="/settings" style={{ width: 220 }} onClick={() => formCache.delete('restore')}>
             復元をやめる
           </Link>
-          {preSaved ? (
-            <button type="button" className="btn btn-primary" style={{ width: 330 }} disabled={!confirmHold || busy} onClick={() => void restore()}>
-              計算保留を確認して復元
-            </button>
-          ) : (
-            <button type="button" className={`btn ${confirmHold ? 'btn-primary' : ''}`} style={{ width: 330 }} disabled={!confirmHold} onClick={preSave}>
-              復元前の保存へ進む
-            </button>
-          )}
+          <button type="button" className="btn" style={{ width: 330 }} disabled={!confirmHold} onClick={backToConfirm}>
+            復元前の確認へ戻る
+          </button>
         </div>
       </Page>
     );
@@ -369,7 +374,10 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
             ファイル内の状態に戻す（実績 {s.results}件{s.drafts > 0 ? `・確認待ち ${s.drafts}件` : ''}）
           </dd>
         </dl>
-        <div className="banner banner-warn restore-warn">{preSaved ? '復元前の状態を書き出しました。この内容で全体を置き換えます。' : '復元前の状態をバックアップしてから、全体を置き換えます。'}</div>
+        <div className="banner banner-warn restore-warn">
+          {preSaved ? '復元前の状態を書き出しました。この内容で全体を置き換えます。' : '復元前の状態をバックアップしてから、全体を置き換えます。'}
+          {check.masterMissing ? '必要なマスターがないため、復元後は予定の再計算を保留します（確認済み）。' : ''}
+        </div>
       </section>
       <div className="restore-actions">
         <Link className="btn" to="/settings" style={{ width: 200 }} onClick={() => formCache.delete('restore')}>

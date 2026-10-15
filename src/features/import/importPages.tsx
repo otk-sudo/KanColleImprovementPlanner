@@ -545,7 +545,7 @@ export function ImportConfirmPage() {
         <p className="import-keep-warn">資材不足は警告付きで仮配置し、当日の予定を自動で翌日へ送りません。</p>
         {projection.equipment.known && preview.protectionIssues.length > 0 ? <p className="text-warn">! 手動保護が最新所持を上回る装備があります。反映後に「保護設定を確認」で選び直してください。</p> : null}
       </section>
-      <div className="import-bottom-actions">
+      <div className="import-bottom-actions import-confirm-actions">
         <button type="button" className="btn" style={{ width: 120 }} onClick={() => navigate(-1)}>
           戻る
         </button>

@@ -287,7 +287,9 @@ function SideEntry({ entry, index, full }: { entry: DayEntry; index: number; ful
       <p className="cal-side-title">
         {String(index + 1).padStart(2, '0')}
         {'   '}
-        {master.equipmentName(entry.transition.equipmentId)} {transitionShort(entry.transition)}
+        {master.equipmentName(entry.transition.equipmentId)}
+        {'  '}
+        {transitionShort(entry.transition)}
         {entry.kind !== 'planned' && !(full && entry.kind === 'tentative') ? <span className={`cal-side-kind kind-${entry.kind}`}>{KIND_LABEL[entry.kind]}</span> : null}
       </p>
       {['success', 'failure', 'skip', 'draft'].includes(entry.kind) ? null : (
@@ -643,14 +645,17 @@ export function PendingPage() {
     const state = latest?.scheduledDate === a.scheduledDate ? (latest.outcome === 'none' ? '未実施' : KIND_LABEL[latest.outcome as 'skip']) : '未配置';
     return { label: s ? transitionLabel(master, s.transition) : k, state, role: s?.role ?? 'target' };
   });
-  const pred = preds[0];
+  // 参照の「前提A：素材の製作 → スキップ」「後続B：その素材を使う改修」と同じ並び。前提が複数あれば全件並べる
+  const succLabel = transitionLabel(master, a.transition);
+  const predText = preds.map((p) => `前提 ${p.label}：${p.role === 'craft' ? '素材の製作' : '改修'} → ${p.state}`).join('　　');
+  const succText = `後続 ${succLabel}：${preds.some((p) => p.role === 'craft') ? 'その素材を使う改修' : 'この改修'}`;
   return (
     <Page nav="calendar" title="前提工程を確認" top={196} sub="資材不足の仮配置と、前提工程が終わっていない状態を区別します。">
       <section className="card pend-card" aria-labelledby="pend-title">
         <h2 className="card-title" id="pend-title">
-          {a.scheduledDate ? formatMonthDayWeek(a.scheduledDate).replace(/（.*）/, '') : ''} ／ {transitionLabel(master, a.transition)}：前提待ち
+          {a.scheduledDate ? formatMonthDayWeek(a.scheduledDate).replace(/（.*）/, '') : ''} ／ 後続 {succLabel}：前提待ち
         </h2>
-        <p className="pend-main">{pred ? `前提：${pred.role === 'craft' ? '素材の製作 ' : ''}${pred.label} → ${pred.state}　　後続：${pred.role === 'craft' ? 'その素材を使う改修' : 'この改修'}` : '前提の工程は計画上ありません。結果を記録できます。'}</p>
+        <p className="pend-main">{preds.length > 0 ? `${predText}　　${succText}` : '前提の工程は計画上ありません。結果を記録できます。'}</p>
         <p className="pend-warn text-warn">この予定は今日の予定に残しますが、前提を満たすまで結果を確定できません。</p>
         <p className="pend-next">翌日になって未完了なら、前提と後続を順番に再配置します。</p>
       </section>

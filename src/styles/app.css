@@ -258,7 +258,8 @@ a {
   display: inline-flex;
   align-items: center;
   height: 40px;
-  padding: 0 14px;
+  /* 画面設計の文字位置はボタンの中心より 3px 上（下余白で中心をずらす） */
+  padding: 0 14px 6px;
   border-radius: var(--radius-button);
   border: none;
   font-size: 13px;

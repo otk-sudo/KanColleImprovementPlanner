@@ -106,29 +106,29 @@
 }
 
 .conf-line {
-  margin: 14px 0 0 6px;
+  margin: 15px 0 0 6px;
   font-size: 18px;
   line-height: 26px;
 }
 
 .conf-line + .conf-line {
-  margin-top: 30px;
+  margin-top: 29px;
 }
 
 .conf-note {
-  margin: 32px 0 0 6px;
+  margin: 35px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
 
 .conf-card2 {
-  margin-top: 27px;
-  padding: 16px 24px 24px 20px;
+  margin-top: 26px;
+  padding: 15px 24px 24px 20px;
   min-height: 245px;
 }
 
 .conf-line2 {
-  margin: 16px 0 0 6px;
+  margin: 17px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -149,8 +149,10 @@
   margin-top: 82px;
 }
 
+/* 参照では確定できない理由を通常の副ボタンと同じ色で示す */
 .conf-actions [aria-disabled='true'] {
   cursor: not-allowed;
+  background: var(--secondary);
   color: var(--text);
 }
 
@@ -160,23 +162,33 @@
   min-height: 236px;
 }
 
+/* 参照の S31 はカード幅が他画面より 4px 狭い */
+.cancel-card,
+.cancel-card2 {
+  margin-right: 4px;
+}
+
 .cancel-label {
   display: block;
-  margin: 12px 0 0 6px;
+  margin: 16px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .cancel-reason {
   display: block;
-  margin: 12px 0 0 6px;
+  margin: 14px 0 0 6px;
+  width: calc(100% - 6px);
   height: 100px;
+  padding-top: 17px;
   font-size: 15px;
+  background: var(--bg);
+  resize: none;
 }
 
 .cancel-card2 {
   margin-top: 24px;
-  padding: 16px 24px 24px 20px;
+  padding: 15px 24px 24px 20px;
   min-height: 248px;
 }
 
@@ -187,19 +199,19 @@
 }
 
 .cancel-line2 {
-  margin: 23px 0 0 6px;
+  margin: 25px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
 
 .cancel-line3 {
-  margin: 25px 0 0 6px;
+  margin: 26px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .cancel-line3 + .cancel-line3 {
-  margin-top: 22px;
+  margin-top: 24px;
 }
 
 .cancel-actions {

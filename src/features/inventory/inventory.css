@@ -6,7 +6,7 @@
 }
 
 .inv-tabs.is-narrow {
-  margin-bottom: 23px;
+  margin-bottom: 22px;
 }
 
 .inv-eq-card {
@@ -126,14 +126,7 @@
 }
 
 .inv-helper-card .card-title,
-.inv-import-card .card-title,
-.inv-ship-card .card-title,
-.inv-ship-note .card-title,
-.inv-items-card .card-title,
-.prot-card1 .card-title,
-.prot-card2 .card-title,
-.detail-card .card-title,
-.detail-card2 .card-title {
+.inv-import-card .card-title {
   margin-left: -4px;
 }
 
@@ -173,8 +166,10 @@
 
 .inv-ship-table {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 22px;
+  border-collapse: separate;
+  /* 行の間隔は 85px（帯 65px ＋ 間 20px） */
+  border-spacing: 0 20px;
+  margin: 3px 0 -20px;
   min-width: 860px;
 }
 
@@ -189,11 +184,11 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
-  padding: 0 0 3px 6px;
+  padding: 0 0 2px 6px;
 }
 
 .inv-ship-table thead th:nth-child(1) {
-  width: 315px;
+  width: 309px;
 }
 
 .inv-ship-table thead th:nth-child(2) {
@@ -204,8 +199,11 @@
   width: 282px;
 }
 
-.inv-ship-table tbody tr {
-  height: 85px;
+.inv-ship-table tbody th,
+.inv-ship-table tbody td {
+  height: 65px;
+  /* 文字は帯の中心より 9px 上 */
+  padding-bottom: 18px;
 }
 
 .inv-ship-table tbody tr.is-alt th,
@@ -242,27 +240,27 @@
 }
 
 .inv-ship-note {
-  margin-top: 22px;
+  margin-top: 21px;
   padding: 16px 24px 24px 20px;
   min-height: 170px;
 }
 
 .inv-ship-note-text {
-  margin: 20px 0 0 6px;
+  margin: 18px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
   color: var(--sub);
 }
 
 .inv-ship-updated {
-  margin: 25px 0 0 6px;
+  margin: 26px 0 0 6px;
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
 }
 
 .inv-image-note {
-  margin: 14px 0 0 26px;
+  margin: 12px 0 0 26px;
   font-size: 12px;
   line-height: 17px;
   color: var(--muted);
@@ -277,8 +275,9 @@
 .inv-items-table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0;
-  margin-top: 30px;
+  /* 行の間隔は 86px（帯 69px ＋ 間 17px） */
+  border-spacing: 0 17px;
+  margin: 11px 0 -17px;
   min-width: 860px;
 }
 
@@ -293,13 +292,13 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
-  padding-bottom: 26px;
+  padding-bottom: 9px;
   width: 221px;
 }
 
 .inv-items-table tbody th,
 .inv-items-table tbody td {
-  height: 86px;
+  height: 69px;
   vertical-align: top;
   padding-top: 8px;
   font-size: 15px;
@@ -320,7 +319,7 @@
 }
 
 .inv-items-foot {
-  margin: 40px 0 0 6px;
+  margin: 66px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -328,53 +327,70 @@
 /* S33 */
 .prot-card1 {
   padding: 16px 24px 24px 20px;
-  min-height: 229px;
+  min-height: 230px;
+}
+
+/* 参照の S33 はカード幅が他画面より 4px 狭い */
+.prot-card1,
+.prot-card2 {
+  margin-right: 4px;
 }
 
 .prot-counts {
-  margin: 14px 0 0 6px;
+  margin: 15px 0 0 6px;
   font-size: 22px;
   line-height: 32px;
 }
 
 .prot-detail {
-  margin: 15px 0 0 6px;
+  margin: 20px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
 }
 
 .prot-hint {
-  margin: 26px 0 0 6px;
+  margin: 29px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .prot-card2 {
-  margin-top: 24px;
-  padding: 16px 24px 24px 20px;
-  min-height: 232px;
+  margin-top: 22px;
+  padding: 15px 24px 24px 20px;
+  min-height: 234px;
 }
 
 .prot-edit-row {
   display: flex;
   align-items: center;
   gap: 36px;
-  margin: 20px 0 0 6px;
+  margin: 21px 0 0 6px;
 }
 
+/* 参照は「− 2 個 ＋」を左に寄せ、残りは余白 */
 .prot-stepper {
   width: 300px;
   height: 48px;
-  justify-content: space-between;
-  padding: 0 12px;
+  justify-content: flex-start;
+  padding: 0;
   font-size: 17px;
+}
+
+.prot-stepper button:first-child {
+  width: 44px;
 }
 
 .prot-stepper output {
+  width: 79px;
   font-size: 17px;
 }
 
+.prot-stepper button:last-child {
+  width: 38px;
+}
+
 .prot-range {
+  margin-top: -5px;
   font-size: 15px;
 }
 
@@ -395,7 +411,7 @@
 }
 
 .prot-after {
-  margin: 22px 0 0 6px;
+  margin: 20px 0 0 6px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -407,7 +423,7 @@
 }
 
 .prot-hold {
-  margin: 38px 0 0 26px;
+  margin: 36px 0 0 26px;
   min-height: 20px;
   font-size: 14px;
   line-height: 20px;
@@ -416,7 +432,7 @@
 .prot-actions {
   display: flex;
   justify-content: space-between;
-  margin-top: 48px;
+  margin-top: 50px;
   padding-right: 28px;
 }
 
@@ -429,11 +445,11 @@
 .detail-body {
   display: flex;
   gap: 27px;
-  margin: 20px 0 0 7px;
+  margin: 27px 0 0 7px;
 }
 
 .detail-body .detail-name {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .detail-stars {
@@ -448,19 +464,19 @@
 }
 
 .detail-counts {
-  margin: 20px 0 0;
+  margin: 21px 0 0;
   font-size: 16px;
   line-height: 24px;
 }
 
 .detail-sub {
-  margin: 26px 0 0;
+  margin: 23px 0 0;
   font-size: 14px;
   line-height: 20px;
 }
 
 .detail-warn {
-  margin: 36px 0 0 7px;
+  margin: 33px 0 0 7px;
   font-size: 13px;
   line-height: 18px;
 }
@@ -474,27 +490,27 @@
 .detail-ship {
   display: flex;
   gap: 112px;
-  margin: 20px 0 0 7px;
+  margin: 27px 0 0 7px;
 }
 
 .detail-ship .detail-name {
-  margin-top: 4px;
+  margin-top: -5px;
 }
 
 .detail-ship-sub {
-  margin: 14px 0 0;
+  margin: 17px 0 0;
   font-size: 16px;
   line-height: 24px;
 }
 
 .detail-source {
-  margin: 28px 0 0 7px;
+  margin: 43px 0 0 7px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .detail-source + .detail-source {
-  margin-top: 23px;
+  margin-top: 25px;
 }
 
 .detail-apply {
