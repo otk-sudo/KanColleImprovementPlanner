@@ -1,5 +1,5 @@
 import { computeRollover } from '../domain/rollover';
-import { todayJst, type DateJst } from '../domain/jst';
+import { compareDate, todayJst, type DateJst } from '../domain/jst';
 import type { MasterIndex } from '../domain/master';
 import type { Attempt } from '../domain/model';
 import { projectInventory } from '../domain/inventory/projection';
@@ -63,10 +63,17 @@ export class AppService {
     return loadData(this.db);
   }
 
+  /** 計画で使う今日。端末の時刻が戻っても、処理済みの日付より前にはしない（予定を巻き戻さない） */
+  planningToday(data: AppData): DateJst {
+    const today = this.today();
+    const processed = data.meta.lastProcessedDateJst;
+    return processed && compareDate(today, processed) < 0 ? processed : today;
+  }
+
   computePlan(data: AppData): PlanResult {
     return buildPlan({
       master: this.master,
-      todayJst: this.today(),
+      todayJst: this.planningToday(data),
       inventory: projectInventory(data.baselines, data.resultEvents, data.drafts),
       protections: data.protections,
       goals: data.goals,
@@ -116,7 +123,7 @@ export class AppService {
    */
   async rollover(): Promise<{ moved: number; recalc: RecalcStatus | null; saved: boolean }> {
     const nowMs = this.clock.nowMs();
-    const today = todayJst(nowMs);
+    const clockToday = todayJst(nowMs);
     const now = this.nowIso();
     let moved = 0;
     let saved = false;
@@ -124,6 +131,9 @@ export class AppService {
     let dateAdvanced = false;
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
+      // 処理済みの日付は戻さない（端末の時刻が日付をまたいで戻っても、翌日処理と予定を巻き戻さない）
+      const last = data.meta.lastProcessedDateJst;
+      const today = last && compareDate(clockToday, last) < 0 ? last : clockToday;
       const preview = computeRollover(data.attempts, today, now, new Set(data.goals.map((g) => g.goalId)));
       const clockBack = nowMs < data.meta.lastClockMs - 5 * 60 * 1000;
       if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && !clockBack) {

@@ -8,6 +8,7 @@
 |---|---|---|
 | 共通マスター出典（Tibowl/api_start2、ElectronicObserverEN/Data）の配布条件 | 未確認（ライセンス表記なし） | 公開サイトは生成したマスター（public/master）を配信する。配布条件を確認するか、権利者の許諾・代替出典が必要 |
 | ゲーム画像 | 配布条件未確認 | 既定のまま非表示（VITE_IMAGE_BASE_URL を設定しない）。表示する場合は配信元と条件を確認。画像のパスに装備・艦のIDが入るため、同じサイトの相対パスだけを指定できる（別サイトの URL はビルドで拒否） |
+| 公開先のオリジン（セキュリティ） | 未決定 | IndexedDB はオリジン（https://ドメイン）単位で共有され、URL のパスやDB名では分かれない。GitHub Pages のプロジェクトサイト（https://otk-sudo.github.io/リポジトリ名/）は同じアカウントの他のプロジェクトサイトと同じオリジンになり、そちらのスクリプトから所持・計画・実績のデータを読み書きできる。**このアプリ専用のオリジン**（独自ドメイン・サブドメインなど、他のサイトと共有しないもの）で公開するか、同じオリジンに信頼できないサイトが一切ないことを確認してから公開する。CSP はこのアプリの画面にしか効かない |
 | 実機確認（A02・A11・A13） | 未実施 | Chrome/Edge と 74式EN の実レスポンス取り込み、Windows 実機の目視、ゲーム側の手順撮影 |
 | Codex レビュー | PR の最新 head SHA で「指摘なし」が必要 | development-workflow.md のマージゲート |
 | main へのマージ | 利用者の許可が必要 | squash マージ、`--match-head-commit` に完全な SHA を指定 |
@@ -51,9 +52,9 @@
            uses: actions/deploy-pages@v4
    ```
 
-3. リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
+3. リポジトリの Settings → Pages → Source を「GitHub Actions」にする。専用のオリジンで公開する場合は、Settings → Pages → Custom domain に専用のドメイン（またはサブドメイン）を設定し、HTTPS を有効にする（上表「公開先のオリジン」）。
 4. Actions から「Deploy to GitHub Pages」を手動実行する。
-5. 公開URL（https://otk-sudo.github.io/KanColleImprovementPlanner/ の想定）で確認する：
+5. 公開URL（専用のオリジン。otk-sudo.github.io のプロジェクトサイトのままにする場合は、同じオリジンに他のサイトがないことを確認済みであること）で確認する：
    - 初回画面（S15）が表示され、フッターにアプリ版とマスター版が出る（目録の SHA-256 照合が通っている）。
    - `#/calendar` などハッシュURLの再読み込みで同じ画面が開く（base `./`）。
    - 開発者ツールで CSP（connect-src 'self'）が付いており、外部への通信がない。

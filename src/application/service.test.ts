@@ -275,6 +275,24 @@ describe('実績・下書き・翌日処理', () => {
     expect(today?.transition).toMatchObject({ fromStar: 6, toStar: 7 });
   });
 
+  it('端末の時刻が日付をまたいで戻っても、処理済みの日付と予定を巻き戻さず、警告だけ残す', async () => {
+    const s = await service();
+    await seedPlan(s);
+    clockMs += 24 * 3600 * 1000; // 10/15 に進めて処理
+    await s.rollover();
+    const after15 = await s.load();
+    expect(after15.meta.lastProcessedDateJst).toBe('2026-10-15');
+    const scheduled = after15.attempts.filter((a) => a.lifecycle === 'active' && a.outcome === 'none').map((a) => [a.attemptId, a.scheduledDate]);
+    clockMs -= 24 * 3600 * 1000; // 10/14 に戻す
+    await s.rollover();
+    const back = await s.load();
+    expect(back.meta.lastProcessedDateJst).toBe('2026-10-15');
+    expect(back.meta.clockWarning).not.toBeNull();
+    expect(back.attempts.filter((a) => a.lifecycle === 'active' && a.outcome === 'none').map((a) => [a.attemptId, a.scheduledDate])).toEqual(scheduled);
+    // 計画も処理済みの日付より前を今日として扱わない
+    expect(s.computePlan(back).placements.every((p) => p.date === null || p.date >= '2026-10-15')).toBe(true);
+  });
+
   it('翌日処理を保存できなかったら、保存できなかったことを返す（未実施の予定を移したことにしない）', async () => {
     const s = await service();
     await seedPlan(s);
@@ -750,6 +768,28 @@ describe('レビュー指摘（PR #1）', () => {
     const success = buildDeltas({ transition: a.transition, outcome: 'success', consumption: { resources: { 8: 3, 7: 4 }, equipment: [{ equipmentId: FX.materialA, star: 0, count: 2 }], useItems: {} } });
     const r = handleCorrectResult(data, { eventId: 'es', newOutcome: 'success', newDeltas: success, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '', recipeSnapshot: snapshot });
     expect(r.ok && r.writes.put?.resultEvents?.[0]?.recipeSnapshot).toEqual(snapshot);
+  });
+
+  it('再挑戦がある失敗を「実施していなかった」へ訂正すると、結果のない再挑戦を取り消して元の予定に戻す（結果のある再挑戦があれば保存しない）', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const failed = await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }] });
+    await s.run('RecordResult', handleRecordResult, failed, await base(s));
+    await s.run('SameDayRetry', handleSameDayRetry, { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' }, await base(s));
+    const d = await s.load();
+    const voided = { eventId: failed.eventId, newOutcome: 'voided' as const, newDeltas: [], occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '' };
+    const r = handleCorrectResult(d, voided);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.writes.put?.attempts?.find((x) => x.attemptId === a.attemptId)).toMatchObject({ outcome: 'none', lifecycle: 'active' });
+      expect(r.writes.put?.attempts?.find((x) => x.attemptId === `${a.stepKey}@2`)).toMatchObject({ lifecycle: 'cancelled' });
+    }
+    // 再挑戦に結果があれば、自動で取り消さず保存しない
+    const retried = { ...d, attempts: d.attempts.map((x) => (x.attemptId === `${a.stepKey}@2` ? { ...x, outcome: 'failure' as const } : x)) };
+    const blocked = handleCorrectResult(retried, voided);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.errors[0]?.code).toBe('SUCCESSOR_HAS_RESULT');
   });
 
   it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {

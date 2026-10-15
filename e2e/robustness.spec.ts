@@ -120,6 +120,61 @@ test('A10：保護数の保存が別のタブの変更と競合したら、最�
   expect((await state(b)).protections.find((x) => x.bucket === `${ID.mainGunA}:6`)?.count).toBe(2);
 });
 
+test('A10：保護の確認中に別のタブで装備を取り込んだら、競合を知らせた後は最新の取り込みを前提に確認し直せる', async ({ context }) => {
+  const reconciling: BackupSpec = {
+    ...seed,
+    baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 6, 3]])],
+    protections: [{ bucket: `${ID.mainGunA}:6`, equipmentId: ID.mainGunA, star: 6, count: 3, instanceIds: null, reason: '', reconciliationRequired: true, reconciliationSnapshotId: 'old', previousOwned: 3, updatedAt: '' }],
+  };
+  const route = `/inventory/protection/${ID.mainGunA}:6`;
+  const a = await context.newPage();
+  await start(a, { data: reconciling, route });
+  await expect(a.getByRole('button', { name: '保護3個に変更' })).toBeVisible();
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await pasteAndApply(b, JSON.stringify([0, 1, 2].map(() => ({ id: ID.mainGunA, lv: 6 }))));
+  await expect.poll(async () => (await state(a)).meta.revision).toBe((await state(b)).meta.revision);
+  await a.getByRole('button', { name: '保護3個に変更' }).click();
+  await expect(a.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  // 確認し直して保存すれば、最新の取り込みに対する確認として保存できる
+  await a.getByRole('button', { name: '保護3個に変更' }).click();
+  await a.waitForURL(/#\/inventory\/equipment/);
+  expect((await state(a)).protections.find((x) => x.bucket === `${ID.mainGunA}:6`)?.reconciliationRequired).toBe(false);
+});
+
+test('A10：同じ記録を2つのタブで訂正したら、後から確定したタブは最新の訂正内容に読み直す', async ({ context }) => {
+  const withPlan: BackupSpec = { ...seed, baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 5, 1], [ID.materialA, 0, 3]]), shipBaseline([ID.shipAKai2])], goals: [goal({ goalId: 'g1', equipmentId: ID.mainGunA, targetStar: 6, count: 1 })] };
+  const a = await context.newPage();
+  await start(a, { data: withPlan, route: '/calendar' });
+  await a.getByRole('link', { name: '結果を記録' }).first().click();
+  await a.getByRole('radio', { name: '成功' }).click();
+  await a.getByRole('button', { name: '内容を確認' }).click();
+  await a.getByRole('button', { name: 'この内容で記録' }).click();
+  await a.waitForURL(/#\/calendar/);
+  const ev = (await state(a)).resultEvents[0]!;
+  const route = `/history/events/${encodeURIComponent(ev.eventId)}/correct`;
+  await a.goto(`/#${route}`);
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto(`/#${route}`);
+  await expect(b.getByRole('radio', { name: '成功' })).toHaveAttribute('aria-checked', 'true');
+  // A が失敗へ訂正する
+  await a.getByRole('radio', { name: '失敗' }).click();
+  await a.getByRole('button', { name: '内容を確認' }).click();
+  await a.getByRole('button', { name: 'この内容で訂正' }).click();
+  await a.waitForURL(/#\/history$/);
+  await expect.poll(async () => (await state(b)).meta.revision).toBe((await state(a)).meta.revision);
+  // B は開いた時点（成功）のまま確定しようとする → 競合し、最新（失敗）に読み直す
+  await b.getByRole('textbox', { name: '訂正の理由（任意）' }).fill('B のメモ');
+  await b.getByRole('button', { name: '内容を確認' }).click();
+  await b.getByRole('button', { name: 'この内容で訂正' }).click();
+  await expect(b.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  await expect(b.getByRole('radio', { name: '失敗' })).toHaveAttribute('aria-checked', 'true');
+  expect((await state(b)).resultEvents[0]!.outcome).toBe('failure');
+});
+
 test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
   const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
   const a = await context.newPage();

@@ -555,6 +555,15 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   }
   // 成功へ訂正すると同じ工程の再挑戦・繰越の後継は不要になる。記録のときと同じく、結果のない後継は取り消し、
   // 結果のある後継があれば自動で取り消さず保存しない（同じ工程の成功と後継の結果を二重に持たない）
+  // 未実施へ訂正して元の予定を開き直す場合も、同じ工程に有効な予定を2つ作らない。結果のない後継は取り消し、
+  // 結果のある後継があれば自動で取り消さず保存しない
+  if (attempt && attempt.lifecycle === 'active' && p.newOutcome === 'voided') {
+    for (const s of laterAttempts(data, attempt)) {
+      if (s.lifecycle !== 'active') continue;
+      if (s.outcome === 'none') attempts.push({ ...s, lifecycle: 'cancelled', cancelReason: '元の記録を未実施へ訂正したため不要になった再挑戦' });
+      else return fail('SUCCESSOR_HAS_RESULT', '同じ工程の後継の予定に既に結果があるため、未実施へ訂正できません。後継の記録を先に確認してください。', { successorAttemptId: s.attemptId, successorOutcome: s.outcome, successorDate: s.scheduledDate });
+    }
+  }
   if (attempt && p.newOutcome === 'success' && e.outcome !== 'success') {
     for (const s of laterAttempts(data, attempt)) {
       if (s.lifecycle !== 'active') continue;

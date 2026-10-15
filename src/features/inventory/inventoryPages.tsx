@@ -324,7 +324,8 @@ export function ProtectionPage() {
   // 個体単位では、保護数は選んだ個体の数（取り込みで消えた個体は選択から外れる）
   const [count, setCount] = useState(() => (useInstances ? selected.length : Math.min(requested, owned)));
   const [message, setMessage] = useState<string | null>(null);
-  const snapshotAtOpen = useMemo(() => projection.equipment.snapshotId, [bucket]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 確認画面を開いたときの装備の取り込み。競合を知らせた後は、最新の取り込みに対する確認として読み直す
+  const [snapshotAtOpen, setSnapshotAtOpen] = useState(() => projection.equipment.snapshotId);
   const preview = protectionChangePreview({ owned, goalUse, newManual: count });
   const commandId = useCommandId(bucket, count, selected);
   const name = equipLabel(master, equipmentId, star);
@@ -346,6 +347,7 @@ export function ProtectionPage() {
         const ids = latest?.instanceIds?.filter((id) => instances.some((i) => i.instanceId === id)) ?? [];
         setSelected(ids);
         setCount(useInstances ? ids.length : (latest?.count ?? 0));
+        setSnapshotAtOpen(r.latest.baselines.find((b) => b.scope === 'equipment')?.snapshotId ?? null);
       }
       return setMessage(r.message);
     }

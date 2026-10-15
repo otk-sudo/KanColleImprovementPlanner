@@ -138,6 +138,16 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   /** 競合を知らせた後は、表示している最新の内容を前提に確定し直せるようにする */
   const rebase = (r: RunResult<unknown>) => {
     if (r.outcome.status !== 'CONFLICT' && r.outcome.status !== 'EPOCH_MISMATCH') return;
+    // 訂正は、別のタブなどで同じ記録が変わっていたら、その最新の内容でフォームを作り直して確認してもらう
+    const latestEvent = mode === 'correct' && event ? r.latest.resultEvents.find((x) => x.eventId === event.eventId) : undefined;
+    if (latestEvent && attempt) {
+      const latestRows = consumptionRows(master, ctx.planned, projection, consumedDeltas(latestEvent.deltas, attempt.transition, latestEvent.outcome), allocationFrom(ctx.placement?.consumption));
+      const next = initialForm(attempt, today, 'correct', latestEvent, savedValues(latestEvent.deltas, attempt.transition, latestEvent.outcome, latestRows), null, null, r.latestBase);
+      formCache.set(formKey(attemptId), next);
+      setForm(next);
+      setChecked(false);
+      return;
+    }
     setForm((f) => {
       const next = { ...f!, base: r.latestBase };
       formCache.set(formKey(attemptId), next);
