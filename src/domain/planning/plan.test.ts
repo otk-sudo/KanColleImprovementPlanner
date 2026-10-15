@@ -121,6 +121,17 @@ describe('日程配置と仮想在庫', () => {
     expect(placed.map((p) => p.date)).toEqual(['2026-10-14', '2026-10-15', '2026-10-16']);
   });
 
+  it('素材装備が足りていれば仮配置にしない（割当済みの素材を日程の仮想在庫で二重に引かない）', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 6, count: 1 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 2 }), inventory: { equipment: [[1, 5, 1], [2, 0, 3]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g] }));
+    expect(plan.placements).toHaveLength(1);
+    expect(plan.placements[0]!.tentative).toBe(false);
+    // shortages は消費する全項目を持つ。素材装備Y（ID 2）を含め、どれも不足0
+    expect(plan.placements[0]!.shortages.map((s) => [s.key, s.deficit])).toEqual(expect.arrayContaining([['equipment:2', 0]]));
+    expect(plan.placements[0]!.shortages.every((s) => s.deficit === 0)).toBe(true);
+    expect(plan.totals.find((t) => t.key === 'equipment:2')?.shortage ?? 0).toBe(0);
+  });
+
   it('P07：艦娘未取得は未配置、資材不足は仮配置、条件不明は未配置', () => {
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
     const unknownShips = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], resources: { 8: 0, 7: 0 } }, goals: [g] }));

@@ -9,6 +9,7 @@ import { enumerateRoutes, parseRouteKey, transitionOptions, type MasterIndex } f
 import type { Goal, MaterialRouteChoice } from '../../domain/model';
 import type { PlanResult, PlanStep, UnplacedReason } from '../../domain/planning/types';
 import { UNPLACED_REASON_LABELS } from '../../domain/planning/types';
+import { newId } from '../../infrastructure/repository';
 import { EquipmentImage, IMAGES_ENABLED } from '../../ui/GameImage';
 import { SelectBox } from '../../ui/SelectBox';
 import { costKeyPlain, costSummaryTight, transitionLabel } from '../../ui/format';
@@ -185,7 +186,7 @@ export function GoalFormPage() {
   const [form, setForm] = useState<Goal>(
     () =>
       editing ?? {
-        goalId: `goal-${Date.now().toString(36)}`,
+        goalId: newId('goal'),
         equipmentId: 0,
         targetStar: 6,
         count: 1,

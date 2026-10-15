@@ -73,6 +73,21 @@ export function consumptionRows(m: MasterIndex, planned: PlannedCost | null, pro
   return rows;
 }
 
+/** 保存済みの増減から、改修対象そのものの★変化（成功時の入力−1・出力＋1）を除いた消費だけを返す */
+export function consumedDeltas(deltas: Delta[], transition: Transition, outcome: string): Delta[] {
+  if (outcome !== 'success') return deltas;
+  const fromStar = transition.kind === 'improve' ? transition.fromStar : 10;
+  const toId = transition.kind === 'improve' ? transition.equipmentId : transition.toEquipmentId;
+  let inputSkipped = false;
+  let outputSkipped = false;
+  return deltas.filter((d) => {
+    if (d.scope !== 'equipment') return true;
+    if (!inputSkipped && d.amount === -1 && d.equipmentId === transition.equipmentId && d.star === fromStar) return !(inputSkipped = true);
+    if (!outputSkipped && d.amount === 1 && d.equipmentId === toId && d.star === transition.toStar) return !(outputSkipped = true);
+    return true;
+  });
+}
+
 export function valuesFromDeltas(deltas: Delta[], transition: Transition, outcome: string): { values: Record<string, string>; stars: Record<string, number> } {
   const values: Record<string, string> = {};
   const stars: Record<string, number> = {};
@@ -86,6 +101,13 @@ export function valuesFromDeltas(deltas: Delta[], transition: Transition, outcom
     } else values[d.scope] = String(-d.amount);
   }
   return { values, stars };
+}
+
+/** 確定済みの記録の値。消費0の行は増減が保存されないため 0 で埋める（下書きの未確定値には使わない） */
+export function savedValues(deltas: Delta[], transition: Transition, outcome: string, rows: ConsumptionRow[]): { values: Record<string, string>; stars: Record<string, number> } {
+  const v = valuesFromDeltas(deltas, transition, outcome);
+  for (const r of rows) if (v.values[r.key] === undefined) v.values[r.key] = '0';
+  return v;
 }
 
 export function parseCount(v: string | undefined): number | null {

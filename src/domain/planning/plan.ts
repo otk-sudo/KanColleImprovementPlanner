@@ -595,6 +595,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     const consumption: ConsumedItem[] = [];
     for (const item of items) {
       let amount = item.amount;
+      // 仮想在庫の初期値は、この工程で★別の在庫プールを減らす前に確定する（同じ消費を二重に引かない）
+      if (!balances.has(item.key)) balances.set(item.key, initialBalance(item.key));
       if (item.key.startsWith('equipment:')) {
         const id = Number(item.key.split(':')[1]);
         amount -= Math.min(amount, crafted?.get(id) ?? 0);
@@ -617,7 +619,6 @@ export function buildPlan(input: PlanInput): PlanResult {
       } else {
         consumption.push({ key: item.key, amount: item.amount });
       }
-      if (!balances.has(item.key)) balances.set(item.key, initialBalance(item.key));
       const bal = balances.get(item.key)!;
       if (bal === null) {
         shortages.push({ key: item.key, deficit: null });

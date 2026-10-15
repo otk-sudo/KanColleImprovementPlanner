@@ -355,7 +355,7 @@
 .week-grid {
   display: grid;
   /* 参照は 154px × 7 列（カード全幅より 10px 狭い） */
-  grid-template-columns: repeat(7, 154px);
+  grid-template-columns: repeat(7, minmax(0, 154px));
   gap: 12px;
 }
 
@@ -755,5 +755,21 @@
   }
   .day-total-list li {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* 縮小ウィンドウ・拡大表示では上部のボタン列を折り返し、はみ出させない */
+  .cal-toolbar,
+  .week-toolbar,
+  .day-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    row-gap: 10px;
+    margin-right: 0;
+    padding-right: 0;
+  }
+  .cal-month {
+    min-width: 0;
+  }
+  .day-skip {
+    width: auto;
   }
 }

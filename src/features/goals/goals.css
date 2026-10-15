@@ -631,7 +631,11 @@
   }
   .goal-form-grid,
   .steps-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .goal-form-card,
+  .goal-preview-card {
+    min-height: 0;
   }
   .goal-preview-actions,
   .goal-delete {

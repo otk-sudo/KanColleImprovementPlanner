@@ -12,7 +12,7 @@ import { fixedHistoryOnlyScopes, scopesOfDeltas, wouldGoNegative } from '../../d
 import { newId, type AppData } from '../../infrastructure/repository';
 import { costKeyPlain, recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import { DateBox } from '../../ui/SelectBox';
-import { consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, valuesFromDeltas, type RecordForm } from './recordModel';
+import { consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 import './record.css';
 
 // 改修結果の記録（S13）・実施済み確認待ち（S28）・過去実績の scope 確認（S34）。design/10・12、ui-design-v1 第4巡・第12巡。
@@ -51,7 +51,7 @@ function recipeSnapshotFor(master: ReturnType<typeof useStore>['master'], attemp
   };
 }
 
-function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'], event: ResultEvent | null, draftValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftId: string | null): RecordForm {
+function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'], event: ResultEvent | null, eventValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftId: string | null): RecordForm {
   const base: RecordForm = {
     attemptId: attempt.attemptId,
     mode,
@@ -65,10 +65,7 @@ function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'],
     scopeAnswers: {},
     reason: '',
   };
-  if (event) {
-    const v = valuesFromDeltas(event.deltas, attempt.transition, event.outcome);
-    return { ...base, outcome: event.outcome, occurredDate: event.occurredDateJst, values: v.values, stars: v.stars };
-  }
+  if (event && eventValues) return { ...base, outcome: event.outcome, occurredDate: event.occurredDateJst, values: eventValues.values, stars: eventValues.stars };
   if (draftValues) return { ...base, ...draftValues };
   return base;
 }
@@ -83,17 +80,19 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const ctx = useAttemptContext(attemptId);
   const { attempt } = ctx;
   const cached = formCache.get(formKey(attemptId)) as RecordForm | undefined;
+  // 訂正では改修対象そのものの★変化を消費の行にしない。確定済みの記録は消費0の行も 0 として復元する
+  const rows = useMemo(() => consumptionRows(master, ctx.planned, projection, event && attempt ? consumedDeltas(event.deltas, attempt.transition, event.outcome) : (draft?.knownConsumptions ?? [])), [master, ctx.planned, projection, event, draft, attempt]);
   const [form, setForm] = useState<RecordForm | null>(() => {
     if (!attempt) return null;
     if (cached && cached.mode === mode) return cached;
     const dv = draft ? valuesFromDeltas(draft.knownConsumptions, attempt.transition, 'failure') : null;
-    const f = initialForm(attempt, today, mode, event, dv, draft?.draftId ?? null);
+    const ev = event ? savedValues(event.deltas, attempt.transition, event.outcome, rows) : null;
+    const f = initialForm(attempt, today, mode, event, ev, dv, draft?.draftId ?? null);
     if (draft) return { ...f, outcome: draft.reportedOutcome, occurredDate: draft.occurredDateJst, scopeAnswers: draft.scopeAnswers };
     return f;
   });
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<{ text: string; details?: ResultEvent[] } | null>(null);
-  const rows = useMemo(() => consumptionRows(master, ctx.planned, projection, event?.deltas ?? draft?.knownConsumptions ?? []), [master, ctx.planned, projection, event, draft]);
   const commandId = useCommandId(form);
   const [eventId] = useState(() => newId('ev'));
   if (!attempt || !form) {

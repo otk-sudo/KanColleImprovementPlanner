@@ -21,7 +21,7 @@
 
 .mat-stats {
   display: grid;
-  grid-template-columns: repeat(3, 370px);
+  grid-template-columns: repeat(3, minmax(0, 370px));
   gap: 20px;
 }
 

@@ -578,6 +578,12 @@ a {
   text-align: left;
 }
 
+/* 狭い幅で使う短縮ラベル（既定は非表示。下のメディアクエリより前に置く） */
+.nav-link .nav-short {
+  display: none;
+  font-size: 12px;
+}
+
 /* ---------- PCウィンドウ幅（ui-design-v1「PC幅・キーボード」） ---------- */
 @media (max-width: 1279px) {
   :root {
@@ -613,7 +619,3 @@ a {
   }
 }
 
-.nav-link .nav-short {
-  display: none;
-  font-size: 12px;
-}
