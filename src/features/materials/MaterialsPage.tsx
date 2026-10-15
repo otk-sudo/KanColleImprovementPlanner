@@ -37,10 +37,12 @@ export function MaterialsPage() {
   if (goalId) {
     const gp = plan?.goals.find((g) => g.goalId === goalId);
     const byKey = new Map(totals.map((t) => [t.key, t]));
+    // 目標で絞ったときは、優先度の高い目標が使った後の残りを「使える数」「製作予定」に表示する
     rows = (gp?.need ?? []).map((n) => {
       const s = gp?.shortages.find((x) => x.key === n.key);
+      const a = gp?.availability.find((x) => x.key === n.key);
       const t = byKey.get(n.key);
-      return { key: n.key, need: n.amount, available: t?.available ?? null, shortage: s ? s.amount : t?.available === null ? null : 0, planned: t?.planned ?? 0 };
+      return { key: n.key, need: n.amount, available: a ? a.available : (t?.available ?? null), shortage: s ? s.amount : a?.available === null ? null : 0, planned: a ? a.planned : (t?.planned ?? 0) };
     });
   } else {
     rows = totals.map((t) => ({ key: t.key, need: t.need, available: t.available, shortage: t.shortage, planned: t.planned }));

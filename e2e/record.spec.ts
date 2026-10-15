@@ -214,6 +214,14 @@ test('A10：同日の取り込みで確認待ちになった予定は、その�
   await expect(page.getByRole('row', { name: /改修資材（ネジ）/ })).toContainText('7');
   await page.goto('/#/inventory/equipment');
   await expect(page.getByRole('row', { name: /素材装備A ★0/ })).toContainText('3');
+  // 訂正では「履歴だけ」の扱いを引き継ぐ（変えずに訂正しても装備を所持数に反映しない）
+  await page.goto(`/#/history/events/${encodeURIComponent(ev.eventId)}/correct`);
+  await expect(page.getByLabel('装備を履歴だけに記録')).toBeChecked();
+  await page.getByLabel('訂正の理由（任意）').fill('メモ');
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await page.getByRole('button', { name: 'この内容で訂正' }).click();
+  await page.waitForURL(/#\/history$/);
+  expect((await state(page)).resultEvents.find((e) => e.eventId === ev.eventId)?.historyOnlyScopes).toEqual(['equipment']);
 });
 
 test('A07：スキップは資材も装備も消費せず、同日中は別の日へ自動移動しない', async ({ page }) => {

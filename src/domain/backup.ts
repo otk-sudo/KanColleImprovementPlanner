@@ -249,14 +249,14 @@ export function parseBackup(text: string, currentMasterVersion: string): BackupC
   const b = parsed.data as BackupData;
   const issues = referentialIssues(b);
   if (issues.length > 0) return { ok: false, code: 'BACKUP_INVALID', message: 'バックアップ内の参照に矛盾があります。部分的な復元は行いません。', issues };
-  return { ok: true, backup: b, masterMissing: b.masterVersion !== null && b.masterVersion !== currentMasterVersion };
+  // マスターの参照がない場合も、どのマスターで作った計画か分からないので計算を保留する
+  return { ok: true, backup: b, masterMissing: b.masterVersion === null || b.masterVersion !== currentMasterVersion };
 }
 
 export function referentialIssues(b: BackupData): string[] {
   const issues: string[] = [];
   const attemptIds = new Set(b.attempts.map((a) => a.attemptId));
   const eventIds = new Set(b.resultEvents.map((e) => e.eventId));
-  const draftIds = new Set(b.drafts.map((d) => d.draftId));
   const unique = (label: string, ids: string[]) => {
     if (new Set(ids).size !== ids.length) issues.push(`${label}のIDが重複しています`);
   };
@@ -273,7 +273,12 @@ export function referentialIssues(b: BackupData): string[] {
     // 有効な実績は、その試行が結果として指している（試行と実績の対応が双方向で一致する）
     else if (e.status === 'active' && attemptById.get(e.attemptId)!.resultEventId !== e.eventId) issues.push(`実績 ${e.eventId} がその試行の結果として登録されていません`);
     for (const s of e.inputSourceEventIds) if (!eventIds.has(s)) issues.push(`実績 ${e.eventId} の前提実績 ${s} がありません`);
-    if (e.fromDraftId && !draftIds.has(e.fromDraftId)) issues.push(`実績 ${e.eventId} の下書きがありません`);
+    if (e.fromDraftId) {
+      // 元になった下書きは同じ試行の確定済みの下書き（別の試行の下書きを指すと、取り込み済みの判定を取り違える）
+      const d = b.drafts.find((x) => x.draftId === e.fromDraftId);
+      if (!d) issues.push(`実績 ${e.eventId} の下書きがありません`);
+      else if (d.attemptId !== e.attemptId || d.status !== 'finalized') issues.push(`実績 ${e.eventId} の下書き ${d.draftId} が同じ試行の確定済みの下書きではありません`);
+    }
   }
   for (const d of b.drafts) if (!attemptIds.has(d.attemptId)) issues.push(`下書き ${d.draftId} の試行がありません`);
   // 開いている確認待ちの下書きは1つの試行に1つだけで、その試行は確認待ちの結果になっている（逆も同じ）

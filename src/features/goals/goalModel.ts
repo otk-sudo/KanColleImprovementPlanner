@@ -73,3 +73,8 @@ export function routeOptions(m: MasterIndex, equipmentId: number): { value: stri
     ...routes.slice(1).map((r) => ({ value: r.key, label: r.equipmentIds.map((id) => m.equipmentName(id)).join(' → ') })),
   ];
 }
+
+/** 目標の装備を変える。前の装備のための更新経路・素材の作り方は引き継がない（意図しない製作工程を作らない） */
+export function withEquipment(g: Goal, equipmentId: number): Goal {
+  return { ...g, equipmentId, routeKey: null, materialRoutes: {} };
+}

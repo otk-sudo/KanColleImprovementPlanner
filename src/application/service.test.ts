@@ -597,6 +597,33 @@ describe('レビュー指摘（PR #1）', () => {
     expect(handleRecordResult(d, await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }], fromDraftId: 'd1' })).ok).toBe(true);
   });
 
+  it('目標を削除した後に確認待ちを「実施していなかった」へ訂正すると、その予定は取り消す（どこにも移せない予定を残さない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('SaveDraftResult', handleSaveDraft, { draftId: 'd1', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [], unknownScopes: ['resource:8'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' }, await base(s));
+    const d = await s.load();
+    const r = handleCancelDraft({ ...d, goals: [] }, { draftId: 'd1', reason: '取り違え', now: '' });
+    expect(r.ok && r.writes.put?.attempts?.[0]).toMatchObject({ attemptId: a.attemptId, lifecycle: 'cancelled', outcome: 'none' });
+    // 目標があれば未実施に戻す
+    const kept = handleCancelDraft(d, { draftId: 'd1', reason: '取り違え', now: '' });
+    expect(kept.ok && kept.writes.put?.attempts?.[0]).toMatchObject({ lifecycle: 'active', outcome: 'none' });
+  });
+
+  it('確認待ちの予定で装備を消費しない失敗も、装備を履歴だけと確認すれば記録できる', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const data = { ...d0, attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, executionGate: 'reviewRequired' as const } : x)) };
+    const payload = { ...(await recordPayload(s, a.attemptId, 'failure')), deltas: [{ scope: 'resource:8' as const, amount: -1 }], requireScopeAnswers: true, answeredScopes: ['resource:8' as const, 'equipment' as const] };
+    const r = handleRecordResult(data, { ...payload, historyOnlyScopes: ['resource:8', 'equipment'] });
+    expect(r.ok).toBe(true);
+    const without = handleRecordResult(data, { ...payload, historyOnlyScopes: ['resource:8'] });
+    expect(without.ok).toBe(false);
+    if (!without.ok) expect(without.errors[0]?.code).toBe('REVIEW_REQUIRED');
+  });
+
   it('取り消された予定は、確認待ちとしても保存しない', async () => {
     const s = await service();
     await seedPlan(s);
@@ -643,6 +670,22 @@ describe('レビュー指摘（PR #1）', () => {
     const retry = { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' };
     expect(handleSameDayRetry({ ...d, goals: [] }, retry).ok).toBe(false);
     expect(handleSameDayRetry(d, retry).ok).toBe(true);
+  });
+
+  it('訂正では、取り込みの境界で固定されていない「履歴だけ」の選択を変えられる（固定の種類は変えない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    // ネジを誤って履歴だけにして記録した
+    const rec = await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -2 }], requireScopeAnswers: true, answeredScopes: ['resource:8'], historyOnlyScopes: ['resource:8'] });
+    expect((await s.run('RecordResult', handleRecordResult, rec, await base(s))).status).toBe('APPLIED');
+    const before = projectInventory((await s.load()).baselines, (await s.load()).resultEvents, []).resources.get(8)?.value;
+    // 訂正で所持数に反映する扱いへ変える
+    const r = await s.run('CorrectResult', handleCorrectResult, { eventId: rec.eventId, newOutcome: 'failure', newDeltas: [{ scope: 'resource:8', amount: -2 }], occurredDateJst: s.today(), historyOnlyScopes: [], reason: '扱いの誤り', today: s.today(), now: '' }, await base(s));
+    expect(r.status).toBe('APPLIED');
+    const d = await s.load();
+    expect(d.resultEvents.find((e) => e.eventId === rec.eventId)?.historyOnlyScopes).toEqual([]);
+    expect(projectInventory(d.baselines, d.resultEvents, []).resources.get(8)?.value).toBe((before ?? 0) - 2);
   });
 
   it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {

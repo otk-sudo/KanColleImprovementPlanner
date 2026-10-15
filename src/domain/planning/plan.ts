@@ -176,6 +176,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         reasons: ['EQUIPMENT_UNKNOWN'],
         shortages: [],
         need: [],
+        availability: [],
       })),
       totals: [],
       buckets: [],
@@ -815,7 +816,9 @@ export function buildPlan(input: PlanInput): PlanResult {
     });
 
   // 目標別：優先順位順に使用可能所持を割り当てた後の不足
-  const remainingAvail = new Map<CostKey, number | null>(totals.map((t) => [t.key, t.available === null ? null : t.available + t.planned]));
+  // 優先順位の高い目標から、所持 → 製作予定の順に割り当てた残り（同じ在庫を複数の目標に使えると見せない）
+  const remainingOwned = new Map<CostKey, number | null>(totals.map((t) => [t.key, t.available]));
+  const remainingPlanned = new Map<CostKey, number>(totals.map((t) => [t.key, t.planned]));
   const goalPlans: GoalPlan[] = goals.map((g) => {
     const alloc = allocById.get(g.goalId)!;
     const completed = alloc.completedBuckets.reduce((n, b) => n + b.count, 0);
@@ -827,12 +830,17 @@ export function buildPlan(input: PlanInput): PlanResult {
     const equipmentPending = unknownScope('equipment');
     if (equipmentPending && !reasons.includes('RESULT_PENDING')) reasons.unshift('RESULT_PENDING');
     const need = [...(needByGoal.get(g.goalId) ?? new Map<CostKey, number>()).entries()].sort((a, b) => keyRank(a[0]) - keyRank(b[0]));
+    const availability: GoalPlan['availability'] = [];
     const shortages = need.map(([key, amount]) => {
-      const avail = remainingAvail.get(key);
-      if (avail === null || avail === undefined) return { key, amount: null };
-      const used = Math.min(avail, amount);
-      remainingAvail.set(key, avail - used);
-      return { key, amount: amount - used };
+      const owned = remainingOwned.get(key);
+      const planned = remainingPlanned.get(key) ?? 0;
+      availability.push({ key, available: owned ?? null, planned });
+      if (owned === null || owned === undefined) return { key, amount: null };
+      const fromOwned = Math.min(owned, amount);
+      const fromPlanned = Math.min(planned, amount - fromOwned);
+      remainingOwned.set(key, owned - fromOwned);
+      remainingPlanned.set(key, planned - fromPlanned);
+      return { key, amount: amount - fromOwned - fromPlanned };
     });
     let status: GoalPlan['status'];
     let completionDate: DateJst | null = null;
@@ -856,6 +864,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       completionDate,
       reasons,
       shortages: shortages.filter((s) => s.amount === null || s.amount > 0),
+      availability,
       need: need.map(([key, amount]) => ({ key, amount })),
     };
   });

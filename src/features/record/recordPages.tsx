@@ -82,7 +82,8 @@ function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'],
     scopeAnswers: {},
     reason: '',
   };
-  if (event && eventValues) return { ...base, outcome: event.outcome, occurredDate: event.occurredDateJst, values: eventValues.values, stars: eventValues.stars };
+  // 訂正は、記録したときの「履歴だけ」の扱いを初期値にする（変えなければ所持数への反映は変わらない）
+  if (event && eventValues) return { ...base, outcome: event.outcome, occurredDate: event.occurredDateJst, values: eventValues.values, stars: eventValues.stars, scopeAnswers: Object.fromEntries(event.historyOnlyScopes.map((sc) => [sc, 'historyOnly'])) };
   if (draftValues) return { ...base, ...draftValues };
   return base;
 }
@@ -174,7 +175,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
-      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: [], reason: form.reason, today, now: new Date().toISOString() }, { commandId, base: form.base });
+      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: new Date().toISOString() }, { commandId, base: form.base });
       if (!r.ok) {
         rebase(r);
         const deps = (r.errors[0]?.details as { dependents?: { eventId: string }[] } | undefined)?.dependents ?? [];
@@ -244,6 +245,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const oldDeltas = mode === 'correct' && event && event.status === 'active' ? event.deltas.filter((d) => !event.historyOnlyScopes.includes(d.scope)) : [];
   const newDeltas = form.outcome === 'voided' ? [] : result.deltas;
   const fixedScopes = mode === 'correct' && event ? fixedHistoryOnlyScopes(event, scopesOfDeltas([...event.deltas, ...newDeltas]), data.baselines) : [];
+  const editableHistoryOnly = mode === 'correct' && event ? event.historyOnlyScopes.filter((sc) => !fixedScopes.includes(sc)) : [];
   const effect = correctionEffect({ newDeltas, oldDeltas, fixedScopes }, from.equipmentId, from.star, to.equipmentId, to.star);
   return (
     <Page nav={mode === 'correct' ? 'history' : 'calendar'} top={196} title={title} sub={mode === 'correct' ? '保存済みの結果を訂正します。訂正前の内容は履歴に残ります。' : '実際にゲームで行った結果を記録します。'}>
@@ -311,6 +313,18 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
                 訂正の理由（任意）
               </label>
               <input id="rec-reason" className="input" value={form.reason} onChange={(e) => update({ reason: e.target.value })} placeholder="例：失敗を成功と取り違えた" />
+              {editableHistoryOnly.length > 0 ? (
+                // 記録したときに「履歴だけ」にした種類（取り込みの境界で固定されたものを除く）は、訂正で所持数に反映する扱いへ変えられる
+                <fieldset className="rec-history-only">
+                  <legend className="field-label">所持数に反映しない種類（履歴だけ）</legend>
+                  {editableHistoryOnly.map((sc) => (
+                    <label key={sc} className="goal-check">
+                      <input type="checkbox" checked={form.scopeAnswers[sc] === 'historyOnly'} onChange={(e) => update({ scopeAnswers: { ...form.scopeAnswers, [sc]: e.target.checked ? 'historyOnly' : 'apply' } })} />{' '}
+                      {sc === 'equipment' ? '装備' : costKeyPlain(master, sc)}を履歴だけに記録
+                    </label>
+                  ))}
+                </fieldset>
+              ) : null}
             </>
           ) : null}
           <div className="banner banner-warn rec-warn">
@@ -537,7 +551,8 @@ export function PastRecordPage() {
   const form = cached;
   const result = deltasFromForm(form, rows, attempt.transition);
   // 表示順は装備 → ネジ → 釘 → その他資材 → アイテム（他画面の資材の並びと同じ）
-  const scopes = [...scopesOfDeltas(result.deltas)].sort((a, b) => scopeOrder(a) - scopeOrder(b) || a.localeCompare(b));
+  // 確認待ちの予定は、装備の消費がなくても装備の扱い（履歴だけ）を確認する
+  const scopes = [...new Set<ScopeKey>([...scopesOfDeltas(result.deltas), ...(attempt.executionGate === 'reviewRequired' ? (['equipment'] as ScopeKey[]) : [])])].sort((a, b) => scopeOrder(a) - scopeOrder(b) || a.localeCompare(b));
   const fixed = fixedHistoryOnlyScopes({ originalSequence: data.meta.nextSequence, fromDraftId: form.draftId }, scopes, data.baselines);
   const unanswered = scopes.filter((s) => !fixed.includes(s) && !answers[s]);
   // 確認待ちの予定は、装備を履歴だけに記録する場合だけ確定できる（操作層の REVIEW_REQUIRED と同じ条件）

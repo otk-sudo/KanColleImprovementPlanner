@@ -175,6 +175,8 @@ export interface GoalPlan {
   /** 優先順位で割当後の不足（素材・資材） */
   shortages: { key: CostKey; amount: number | null }[];
   need: { key: CostKey; amount: number }[];
+  /** 必要な項目ごとの、優先度の高い目標が使った後の残り（所持と製作予定）。不明は null */
+  availability: { key: CostKey; available: number | null; planned: number }[];
 }
 
 export interface DaySummary {

@@ -14,7 +14,7 @@ import { EquipmentImage, IMAGES_ENABLED } from '../../ui/GameImage';
 import { SelectBox } from '../../ui/SelectBox';
 import { costKeyPlain, costSummaryTight, transitionLabel } from '../../ui/format';
 import { stageName } from '../inventory/inventoryModel';
-import { goalPlanOf, goalStatus, goalTarget, goalTitle, isGoalDone, routeOptions } from './goalModel';
+import { goalPlanOf, goalStatus, goalTarget, goalTitle, isGoalDone, routeOptions, withEquipment } from './goalModel';
 import './goals.css';
 
 // 改修目標（S03 一覧・S04 追加と計算プレビュー・S19 工程と改修条件・S14 配置できない予定）。design/09・17。
@@ -274,7 +274,7 @@ export function GoalFormPage() {
           <label className="field-label goal-field-first" htmlFor="eq-picker-input">
             装備を検索（未所持の装備も選べます）
           </label>
-          <EquipmentPicker master={master} value={selected ? form.equipmentId : null} onChange={(id) => set({ equipmentId: id, routeKey: null })} />
+          <EquipmentPicker master={master} value={selected ? form.equipmentId : null} onChange={(id) => setForm((f) => withEquipment(f, id))} />
           <div className="goal-form-row">
             <div>
               <label className="field-label" htmlFor="target-star">

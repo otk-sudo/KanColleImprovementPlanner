@@ -324,6 +324,17 @@ describe('確実化と完了予定（design/17）', () => {
 describe('レビュー指摘（PR #1）', () => {
   const draftOf = (attemptId: string, stepKey: string, reportedOutcome: 'success' | 'failure', knownConsumptions: DraftResult['knownConsumptions']): DraftResult => ({ draftId: `d-${attemptId}`, attemptId, stepKey, occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome, knownConsumptions, unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open', cancelReason: null, recipeSnapshot: null });
 
+  it('目標ごとの使える数は、優先度の高い目標が使った後の残り（同じ在庫を複数の目標に使えると見せない）', () => {
+    // ネジ 10。ネジ 6 を使う目標が2つ（優先度 h → g）
+    const h = goal({ goalId: 'h', equipmentId: 1, targetStar: 1, count: 1, priority: 1 });
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1, priority: 2 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ screws: 6 }), inventory: { equipment: [[1, 0, 2]], ships: [101], resources: { 8: 10, 7: 99 } }, goals: [h, g], settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }));
+    const screwsOf = (id: string) => plan.goals.find((x) => x.goalId === id)!.availability.find((s) => s.key === 'resource:8');
+    expect(screwsOf('h')).toEqual({ key: 'resource:8', available: 10, planned: 0 });
+    expect(screwsOf('g')).toEqual({ key: 'resource:8', available: 4, planned: 0 });
+    expect(plan.goals.find((x) => x.goalId === 'g')!.shortages).toEqual([{ key: 'resource:8', amount: 2 }]);
+  });
+
   it('装備の消費が不明な確認待ちの下書きがある間は、目標の達成や完了予定を断定しない', () => {
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
     const other = attempt({ attemptId: 'o|9:0>1|0@1', stepKey: 'o|9:0>1|0', goalId: 'o', transition: { kind: 'improve', equipmentId: 9, fromStar: 0, toStar: 1 }, scheduledDate: '2026-10-13', outcome: 'draft' });

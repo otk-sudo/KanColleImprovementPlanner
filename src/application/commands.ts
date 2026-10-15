@@ -301,7 +301,8 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   }
   const historyOnly = [...new Set([...fixed, ...p.historyOnlyScopes.filter((s) => scopes.includes(s))])];
   // 確認待ち（対象消失・担当艦や条件の不成立）の予定は、装備を履歴だけに記録する場合（取り込み前の記録漏れ）を除き確定しない
-  if (attempt.executionGate === 'reviewRequired' && p.outcome !== 'skip' && !historyOnly.includes('equipment')) {
+  // 装備の消費がない失敗でも、装備を履歴だけと明示して確認すれば記録できる
+  if (attempt.executionGate === 'reviewRequired' && p.outcome !== 'skip' && !historyOnly.includes('equipment') && !p.historyOnlyScopes.includes('equipment')) {
     return fail('REVIEW_REQUIRED', 'この予定は所持データの更新などで確認待ちです（改修対象・担当艦・保護の条件が変わりました）。取り込み前に実施した場合は「記録漏れ」を選び、装備を履歴だけに記録してください。');
   }
 
@@ -455,7 +456,10 @@ export function handleCancelDraft(data: AppData, p: { draftId: string; reason: s
   const d = data.drafts.find((x) => x.draftId === p.draftId);
   if (!d || d.status !== 'open') return fail('DRAFT_NOT_OPEN', '確認待ちの記録が見つかりません。');
   const attempt = data.attempts.find((a) => a.attemptId === d.attemptId);
-  const attempts = attempt && attempt.outcome === 'draft' ? [{ ...attempt, outcome: 'none' as const }] : [];
+  // 目標を削除済みなら、未実施に戻さず取り消す（予定にも翌日処理にも載らない予定を残さない）
+  const goalGone = attempt !== undefined && !data.goals.some((g) => g.goalId === attempt.goalId);
+  const attempts =
+    attempt && attempt.outcome === 'draft' ? [goalGone ? { ...attempt, outcome: 'none' as const, lifecycle: 'cancelled' as const, cancelReason: '目標を削除しました' } : { ...attempt, outcome: 'none' as const }] : [];
   return { ok: true, writes: { put: { drafts: [{ ...d, status: 'cancelled', cancelReason: p.reason.trim(), updatedRevision: data.meta.revision + 1 }], attempts }, meta: { planDirty: true } }, result: null };
 }
 
@@ -507,14 +511,16 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   }
   const scopes = scopesOfDeltas([...e.deltas, ...deltas]);
   const fixed = fixedHistoryOnlyScopes(e, scopes, data.baselines);
-  const historyOnly = [...new Set([...fixed, ...p.historyOnlyScopes.filter((s) => scopes.includes(s)), ...e.historyOnlyScopes])];
+  // 新しい扱い：取り込みの境界で固定の種類（変えられない）と、利用者が選んだ「履歴だけ」（訂正で変えられる）
+  const historyOnly = [...new Set([...fixed, ...p.historyOnlyScopes.filter((s) => scopes.includes(s))])];
+  // 旧増減のうち、いま所持数に反映されているもの（旧の「履歴だけ」と固定の種類を除く）を戻す
+  const oldHistoryOnly = new Set<ScopeKey>([...fixed, ...e.historyOnlyScopes]);
   const proj = projection(data);
-  // 旧増減を外して新増減を適用した結果が負にならないか（基準に含まれる scope は対象外）
-  const reverse: Delta[] = e.deltas.filter((d) => !historyOnly.includes(d.scope)).map((d) => ({ ...d, amount: -d.amount }) as Delta);
+  const reverse: Delta[] = e.deltas.filter((d) => !oldHistoryOnly.has(d.scope)).map((d) => ({ ...d, amount: -d.amount }) as Delta);
   const forward = deltas.filter((d) => !historyOnly.includes(d.scope));
   const negative = wouldGoNegative(proj, [...reverse, ...forward]);
   if (negative.length > 0) return fail('NEGATIVE_INVENTORY', '訂正すると所持数が負になる項目があります。', { scopes: negative });
-  if (!historyOnly.includes('equipment')) {
+  if (!historyOnly.includes('equipment') || !oldHistoryOnly.has('equipment')) {
     const short = chronologyShortfall(data, others, forward, { date: p.occurredDateJst, order: occurredOrder }, reverse, { date: e.occurredDateJst, order: e.occurredOrder });
     if (short.length > 0) return fail('BACKWARD_DEPENDENCY', 'この実施日の時点ではまだ持っていない装備を使う訂正になります（後の日付の記録で作られた★です）。実施日を確認してください。', { buckets: short });
   }

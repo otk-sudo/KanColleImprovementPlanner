@@ -98,6 +98,23 @@ describe('バックアップの検証', () => {
     expect(parseBackup(JSON.stringify(backup({ attempts: [attempt('draft')], drafts: [draft('d1')] })), 'm1').ok).toBe(true);
   });
 
+  it('マスターの参照がないバックアップは、別のマスターと同じく計画を保留する', () => {
+    const r = parseBackup(JSON.stringify(backup({ masterVersion: null })), 'm1');
+    expect(r.ok && r.masterMissing).toBe(true);
+  });
+
+  it('実績の元になった下書きは、同じ試行の確定済みの下書きでなければ拒否する', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const attempt = (attemptId: string, resultEventId: string | null) => ({ attemptId, stepKey: 's', goalId: 'g', transition: t, scheduledDate: '2026-10-13', dayOrder: 1, outcome: (resultEventId ? 'failure' : 'none') as 'failure' | 'none', lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId, cancelReason: null });
+    const draft = (attemptId: string, status: 'finalized' | 'cancelled') => ({ draftId: 'd1', attemptId, stepKey: 's', occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome: 'failure' as const, knownConsumptions: [], unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status, cancelReason: null, recipeSnapshot: null });
+    const event = { eventId: 'e1', attemptId: 'A', stepKey: 's', goalId: 'g', originalSequence: 1, revision: 1, status: 'active' as const, outcome: 'failure' as const, occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: 'd1', recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const meta = { nextSequence: 2, lastProcessedDateJst: null, revision: 1 };
+    const attempts = [attempt('A', 'e1'), attempt('B', null)];
+    expect(parseBackup(JSON.stringify(backup({ meta, attempts, resultEvents: [event], drafts: [draft('B', 'finalized')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ meta, attempts, resultEvents: [event], drafts: [draft('A', 'cancelled')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ meta, attempts, resultEvents: [event], drafts: [draft('A', 'finalized')] })), 'm1').ok).toBe(true);
+  });
+
   it('数量が負の基準在庫を拒否する', () => {
     const bad = backup({ baselines: baselinesFrom({ resources: { 8: 10 } }).map((b) => ({ ...b, value: -1 })) });
     expect(parseBackup(JSON.stringify(bad), 'm1').ok).toBe(false);
