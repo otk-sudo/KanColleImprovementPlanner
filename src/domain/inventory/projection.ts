@@ -67,6 +67,8 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
   // 装備
   const eqBase = byScope.get('equipment');
   const counts = new Map<string, number>();
+  // 取り込み後の実績で増減した★。どの個体が残ったか分からないので、個体の対応を出さない
+  const changedBuckets = new Set<string>();
   if (eqBase?.equipment) {
     for (const b of eqBase.equipment.buckets) counts.set(bucketKey(b.equipmentId, b.star), b.count);
     for (const e of events) {
@@ -75,6 +77,7 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
         if (d.scope !== 'equipment') continue;
         const key = bucketKey(d.equipmentId, d.star);
         counts.set(key, (counts.get(key) ?? 0) + d.amount);
+        if (d.amount !== 0) changedBuckets.add(key);
       }
     }
     for (const [k, v] of [...counts]) {
@@ -130,7 +133,7 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
       known: !!eqBase?.equipment,
       granularity: eqBase?.equipment?.granularity ?? null,
       counts,
-      instances: eqBase?.equipment?.instances ?? null,
+      instances: eqBase?.equipment?.instances ? eqBase.equipment.instances.filter((i) => !changedBuckets.has(bucketKey(i.equipmentId, i.star))) : null,
       importedAt: eqBase?.importedAt ?? null,
       sourceCapturedAt: eqBase?.sourceCapturedAt ?? null,
       snapshotId: eqBase?.snapshotId ?? null,

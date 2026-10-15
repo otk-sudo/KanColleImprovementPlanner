@@ -258,8 +258,12 @@ export function referentialIssues(b: BackupData): string[] {
   unique('目標', b.goals.map((g) => g.goalId));
   unique('基準在庫', b.baselines.map((x) => x.scope));
   unique('保護', b.protections.map((p) => p.bucket));
+  const attemptById = new Map(b.attempts.map((a) => [a.attemptId, a]));
+  const eventById = new Map(b.resultEvents.map((e) => [e.eventId, e]));
   for (const e of b.resultEvents) {
     if (!attemptIds.has(e.attemptId)) issues.push(`実績 ${e.eventId} の試行がありません`);
+    // 有効な実績は、その試行が結果として指している（試行と実績の対応が双方向で一致する）
+    else if (e.status === 'active' && attemptById.get(e.attemptId)!.resultEventId !== e.eventId) issues.push(`実績 ${e.eventId} がその試行の結果として登録されていません`);
     for (const s of e.inputSourceEventIds) if (!eventIds.has(s)) issues.push(`実績 ${e.eventId} の前提実績 ${s} がありません`);
     if (e.fromDraftId && !draftIds.has(e.fromDraftId)) issues.push(`実績 ${e.eventId} の下書きがありません`);
   }
@@ -267,6 +271,7 @@ export function referentialIssues(b: BackupData): string[] {
   for (const a of b.attempts) {
     if (a.predecessorAttemptId && !attemptIds.has(a.predecessorAttemptId)) issues.push(`試行 ${a.attemptId} の前の試行がありません`);
     if (a.resultEventId && !eventIds.has(a.resultEventId)) issues.push(`試行 ${a.attemptId} の実績がありません`);
+    else if (a.resultEventId && eventById.get(a.resultEventId)!.attemptId !== a.attemptId) issues.push(`試行 ${a.attemptId} が別の試行の実績を指しています`);
   }
   const maxSeq = Math.max(0, ...b.resultEvents.map((e) => e.originalSequence));
   if (b.meta.nextSequence <= maxSeq) issues.push('記録順の管理値が保存済みの実績より小さい');

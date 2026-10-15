@@ -5,7 +5,7 @@ import { buildMasterIndex } from '../../domain/master';
 import { FX, fixtureMaster } from '../../test-support/fixtureMaster';
 import { baselinesFrom } from '../../test-support/planFixtures';
 import type { PlannedCost } from '../../domain/model';
-import { snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { plannedForAttempt, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 
 const eq = (equipmentId: number, star: number, amount: number): Delta => ({ scope: 'equipment', equipmentId, star, amount });
 
@@ -129,5 +129,16 @@ describe('確認待ちを確定するときのレシピの記録', () => {
     expect(snapshotForDraft(drafts, 'd', () => fresh)).toBe(stored);
     expect(snapshotForDraft(drafts, 'e', () => fresh)).toBe(fresh);
     expect(snapshotForDraft(drafts, null, () => fresh)).toBe(fresh);
+  });
+});
+
+describe('入力行の元にする予定の費用', () => {
+  const cost = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, devmats: { normal: 1, guaranteed: 2 }, screws: { normal: 3, guaranteed: 4 }, equipment: [], useItems: [] };
+  const old: PlannedCost = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, devmats: 5, screws: 6, equipment: [{ equipmentId: 9, count: 1 }], useItems: [] };
+  it('確定済みの記録、次に確認待ちの下書きに保存した費用を使い、どちらもなければ現在の予定から作る', () => {
+    expect(plannedForAttempt({ eventPlanned: old, draftPlanned: null, cost, mode: 'normal' })).toBe(old);
+    // マスター更新で素材が消えても、再開した下書きは保存時の素材の行を出す
+    expect(plannedForAttempt({ eventPlanned: null, draftPlanned: old, cost, mode: 'normal' })).toBe(old);
+    expect(plannedForAttempt({ eventPlanned: null, draftPlanned: null, cost, mode: 'guaranteed' })).toMatchObject({ devmats: 2, screws: 4 });
   });
 });

@@ -194,3 +194,19 @@ describe('在庫投影：最新JSONを基準にし、基準以後の実績だけ
     expect(p.negativeScopes).toContain('resource:8');
   });
 });
+
+describe('個体単位の所持と実績', () => {
+  it('取り込み後の実績で★が変わった装備・★は、どの個体が残っているか分からないので個体の対応を出さない', () => {
+    const eq = baseline('equipment', {
+      equipment: {
+        granularity: 'instance',
+        buckets: [{ equipmentId: 1, star: 0, count: 2 }, { equipmentId: 2, star: 0, count: 1 }],
+        instances: [{ instanceId: 7, equipmentId: 1, star: 0 }, { instanceId: 8, equipmentId: 1, star: 0 }, { instanceId: 9, equipmentId: 2, star: 0 }],
+      },
+    });
+    const p = projectInventory([eq], [event(1, [{ scope: 'equipment', equipmentId: 1, star: 0, amount: -1 }, { scope: 'equipment', equipmentId: 1, star: 1, amount: 1 }])], []);
+    expect(p.equipment.counts.get('1:0')).toBe(1);
+    // 1★0 の個体は分からない。変化のない 2★0 の個体は残す
+    expect(p.equipment.instances?.map((i) => i.instanceId)).toEqual([9]);
+  });
+});

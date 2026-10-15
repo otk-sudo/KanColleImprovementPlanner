@@ -73,6 +73,21 @@ describe('バックアップの検証', () => {
     if (!r.ok) expect(r.issues.join()).toContain('試行がありません');
   });
 
+  it('試行と実績の対応が双方向で一致しないバックアップを拒否する', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const attempt = (attemptId: string, resultEventId: string | null) => ({ attemptId, stepKey: 's', goalId: 'g', transition: t, scheduledDate: '2026-10-13', dayOrder: 1, outcome: (resultEventId ? 'success' : 'none') as 'success' | 'none', lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId, cancelReason: null });
+    const event = { eventId: 'e1', attemptId: 'A', stepKey: 's', goalId: 'g', originalSequence: 1, revision: 1, status: 'active' as const, outcome: 'success' as const, occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const meta = { nextSequence: 2, lastProcessedDateJst: null, revision: 1 };
+    // 試行 B が、試行 A の実績 e1 を自分の結果として指している
+    const crossed = parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('A', null), attempt('B', 'e1')] })), 'm1');
+    expect(crossed.ok).toBe(false);
+    // 有効な実績を、その試行が結果として指していない
+    const unlinked = parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('A', null)] })), 'm1');
+    expect(unlinked.ok).toBe(false);
+    // 一致していれば受け付ける
+    expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('A', 'e1')] })), 'm1').ok).toBe(true);
+  });
+
   it('数量が負の基準在庫を拒否する', () => {
     const bad = backup({ baselines: baselinesFrom({ resources: { 8: 10 } }).map((b) => ({ ...b, value: -1 })) });
     expect(parseBackup(JSON.stringify(bad), 'm1').ok).toBe(false);

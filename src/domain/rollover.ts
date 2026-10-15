@@ -15,7 +15,8 @@ function seqOf(a: Attempt): number {
   return Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1)) || 0;
 }
 
-export function computeRollover(attempts: Attempt[], today: DateJst, nowIso = ''): RolloverResult {
+/** goalIds を渡すと、削除した目標の試行（当日のスキップの結果を含む）は引き継がない */
+export function computeRollover(attempts: Attempt[], today: DateJst, nowIso = '', goalIds: ReadonlySet<string> | null = null): RolloverResult {
   const latestByStep = new Map<string, Attempt>();
   const countByStep = new Map<string, number>();
   for (const a of attempts) {
@@ -29,6 +30,7 @@ export function computeRollover(attempts: Attempt[], today: DateJst, nowIso = ''
   const targets = attempts
     .filter((a) => a.scheduledDate !== null && compareDate(a.scheduledDate, today) < 0)
     .filter((a) => a.lifecycle === 'active' && (a.outcome === 'none' || a.outcome === 'skip'))
+    .filter((a) => goalIds === null || goalIds.has(a.goalId))
     .filter((a) => latestByStep.get(a.stepKey)?.attemptId === a.attemptId)
     .sort((a, b) => compareDate(a.scheduledDate!, b.scheduledDate!) || a.dayOrder - b.dayOrder || a.attemptId.localeCompare(b.attemptId));
   for (const a of targets) {

@@ -68,6 +68,14 @@ function equipmentRowKey(equipmentId: number, star: number): string {
  * 消費の入力行。素材装備は★ごとに1行とし、計画の★割り当て（なければ所持する最も低い★）を候補にする。
  * 保存済みの記録・下書き（extra）にある★も行として出す。行の★は選び直せる。
  */
+/**
+ * 入力行の元にする予定の費用。確定済みの記録、次に確認待ちの下書きに保存した記録時の費用を使い、
+ * どちらもなければ現在の予定（配置・マスター）から作る（マスター更新で素材の行が消えないように）。
+ */
+export function plannedForAttempt(input: { eventPlanned: PlannedCost | null; draftPlanned: PlannedCost | null; cost: AttemptCost | null; mode: GuaranteeMode }): PlannedCost | null {
+  return input.eventPlanned ?? input.draftPlanned ?? plannedFrom(input.cost, input.mode);
+}
+
 export function consumptionRows(m: MasterIndex, planned: PlannedCost | null, projection: InventoryProjection, extra: Delta[] = [], allocation: StarAllocation = new Map()): ConsumptionRow[] {
   const rows: ConsumptionRow[] = [];
   const res = (id: number, amount: number, primary: boolean) => rows.push({ key: `resource:${id}`, kind: 'resource', id, label: m.resourceName(id).replace(/（.*）$/, ''), planned: amount, star: 0, stars: [], primary });

@@ -115,14 +115,14 @@ export class AppService {
     let moved = 0;
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
-      const preview = computeRollover(data.attempts, today, now);
+      const preview = computeRollover(data.attempts, today, now, new Set(data.goals.map((g) => g.goalId)));
       const clockBack = nowMs < data.meta.lastClockMs - 5 * 60 * 1000;
       if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && !clockBack) break;
       const r = await executeInternal(
         this.db,
         data.meta.revision,
         (fresh) => {
-          const rr = computeRollover(fresh.attempts, today, now);
+          const rr = computeRollover(fresh.attempts, today, now, new Set(fresh.goals.map((g) => g.goalId)));
           moved = rr.successors.length;
           return {
             put: { attempts: [...rr.superseded, ...rr.successors] },

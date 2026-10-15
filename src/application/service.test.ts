@@ -519,6 +519,41 @@ describe('レビュー指摘（PR #1）', () => {
     expect(r.ok && r.writes.put?.resultEvents?.[0]?.occurredOrder).toBe(2);
   });
 
+  it('成功を取り消す訂正では、その成功が作った★を途中で別の記録が使っていれば保存しない（後で補充されていても）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const ev = (id: string, seq: number, date: string, deltas: ResultEvent['deltas'], goalId = 'g1'): ResultEvent => ({ eventId: id, attemptId: `${id}@1`, stepKey: id, goalId, originalSequence: seq, revision: 1, status: 'active', outcome: 'success', occurredDateJst: date, occurredOrder: 1, recordedAt: '', deltas, historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });
+    const star = (st: number, amount: number) => ({ scope: 'equipment' as const, equipmentId: FX.mainGunA, star: st, amount });
+    // 10/12 に A が★5→★6、10/13 に別の目標の C が★6 を素材に使い、10/14 に D が★6 を補充
+    const a = ev('A', 1, '2026-10-12', [star(5, -1), star(6, 1)]);
+    const c = ev('C', 2, '2026-10-13', [star(6, -1)], 'g2');
+    const d = ev('D', 3, '2026-10-14', [star(6, 1)], 'g3');
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 4 }, resultEvents: [a, c, d] };
+    const r = handleCorrectResult(data, { eventId: 'A', newOutcome: 'voided', newDeltas: [], occurredDateJst: '2026-10-12', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('BACKWARD_DEPENDENCY');
+    // 成功の日付を、その★を使った記録より後へ動かす訂正も保存しない
+    const moved = handleCorrectResult(data, { eventId: 'A', newOutcome: 'success', newDeltas: [star(5, -1), star(6, 1)], occurredDateJst: '2026-10-14', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' });
+    expect(moved.ok).toBe(false);
+    // 日付を変えない訂正（理由だけ）は保存できる
+    expect(handleCorrectResult(data, { eventId: 'A', newOutcome: 'success', newDeltas: [star(5, -1), star(6, 1)], occurredDateJst: '2026-10-12', historyOnlyScopes: [], reason: 'メモ', today: '2026-10-14', now: '' }).ok).toBe(true);
+  });
+
+  it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const skip = (id: string, attemptId: string): ResultEvent => ({ eventId: id, attemptId, stepKey: id, goalId: 'g1', originalSequence: Number(id.slice(1)), revision: 1, status: 'active', outcome: 'skip', occurredDateJst: '2026-10-14', occurredOrder: Number(id.slice(1)), recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 3 }, resultEvents: [skip('e1', 'a1@1'), skip('e2', 'a2@1')], daySkips: [{ date: '2026-10-14', createdAt: '' }] };
+    const payload = { newOutcome: 'voided' as const, newDeltas: [], occurredDateJst: '2026-10-14', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' };
+    const first = handleCorrectResult(data, { ...payload, eventId: 'e1' });
+    expect(first.ok && first.writes.remove?.daySkips).toEqual([]);
+    // 最後のスキップを訂正したら目印も外す
+    const last = handleCorrectResult({ ...data, resultEvents: [{ ...skip('e1', 'a1@1'), status: 'voided' }, skip('e2', 'a2@1')] }, { ...payload, eventId: 'e2' });
+    expect(last.ok && last.writes.remove?.daySkips).toEqual(['2026-10-14']);
+  });
+
   it('後の日付の成功だけが作った★を、それより前の日付の記録で消費しない（実施日時の順に所持を確かめる）', async () => {
     const s = await service();
     await seedPlan(s);

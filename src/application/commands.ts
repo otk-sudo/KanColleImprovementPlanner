@@ -196,10 +196,10 @@ export function recordOrderFor(data: Pick<AppData, 'resultEvents'>, attempt: Att
 
 /**
  * 実施日時の順に、★別の装備の所持が途中で負にならないか（後の日付の成功だけが作った★を、それより前の日付で使わない）。
- * 装備の基準に取り込み済みの実績は基準に含まれるので順番の対象外。所持が不明・装備を履歴だけに記録する場合は判定しない。
- * baseAdjust は時刻によらず所持から外す増減（訂正で旧増減を戻す分）。
+ * 装備の基準に取り込み済みの実績は基準に含まれるので順番の対象外。所持が不明なら判定しない。
+ * baseAdjust は訂正で外す旧増減（訂正後の記録には旧実施がない）。訂正では旧実施と新実施の早い方から順に調べる。
  */
-function chronologyShortfall(data: AppData, others: ResultEvent[], deltas: Delta[], at: { date: DateJst; order: number }, baseAdjust: Delta[] = []): string[] {
+function chronologyShortfall(data: AppData, others: ResultEvent[], deltas: Delta[], at: { date: DateJst; order: number }, baseAdjust: Delta[] = [], oldAt: { date: DateJst; order: number } | null = null): string[] {
   const proj = projection(data);
   if (!proj.equipment.known) return [];
   const included = data.baselines.find((b) => b.scope === 'equipment')?.includedThroughSequence ?? 0;
@@ -209,23 +209,26 @@ function chronologyShortfall(data: AppData, others: ResultEvent[], deltas: Delta
     return m;
   };
   const own = sumByBucket(deltas);
-  const consumed = [...own].filter(([, v]) => v < 0).map(([k]) => k);
-  if (consumed.length === 0) return [];
   const adjust = sumByBucket(baseAdjust);
-  const later = others
-    .filter((e) => e.status === 'active' && e.originalSequence > included && !e.historyOnlyScopes.includes('equipment') && !happenedBefore({ date: e.occurredDateJst, order: e.occurredOrder }, at))
-    .sort((a, b) => compareDate(a.occurredDateJst, b.occurredDateJst) || a.occurredOrder - b.occurredOrder || a.originalSequence - b.originalSequence)
-    .map((e) => sumByBucket(e.deltas));
+  // 新しく使う★と、訂正で出力を外す★（その出力を途中で別の記録が使っていないか）を調べる
+  const consumed = [...new Set([...own, ...adjust].filter(([, v]) => v < 0).map(([k]) => k))];
+  if (consumed.length === 0) return [];
+  const from = oldAt && happenedBefore(oldAt, at) ? oldAt : at;
+  // 調べ始める時点以降の実績と、新しい実施（own）・旧実施の取り消し（adjust）を時刻順に並べる
+  type Step = { date: DateJst; order: number; seq: number; m: Map<string, number> };
+  const steps: Step[] = others
+    .filter((e) => e.status === 'active' && e.originalSequence > included && !e.historyOnlyScopes.includes('equipment') && !happenedBefore({ date: e.occurredDateJst, order: e.occurredOrder }, from))
+    .map((e) => ({ date: e.occurredDateJst, order: e.occurredOrder, seq: e.originalSequence, m: sumByBucket(e.deltas) }));
+  // 調べ始める時点以降のほかの実績の増減（新しい実施・旧実施の取り消しを加える前に集計する）
+  const laterSum = new Map(consumed.map((k) => [k, steps.reduce((n, x) => n + (x.m.get(k) ?? 0), 0)]));
+  steps.push({ date: at.date, order: at.order, seq: -1, m: own });
+  steps.sort((a, b) => compareDate(a.date, b.date) || a.order - b.order || a.seq - b.seq);
   const out: string[] = [];
   for (const k of consumed) {
-    const laterSum = later.reduce((n, m) => n + (m.get(k) ?? 0), 0);
-    let running = (proj.equipment.counts.get(k) ?? 0) + (adjust.get(k) ?? 0) - laterSum + own.get(k)!;
-    if (running < 0) {
-      out.push(k);
-      continue;
-    }
-    for (const m of later) {
-      running += m.get(k) ?? 0;
+    // 調べ始める時点の所持 = 現在の所持 − その時点以降のほかの実績の増減 − 旧実施の増減（訂正後の記録には旧実施がない）
+    let running = (proj.equipment.counts.get(k) ?? 0) - laterSum.get(k)! + (adjust.get(k) ?? 0);
+    for (const x of steps) {
+      running += x.m.get(k) ?? 0;
       if (running < 0) {
         out.push(k);
         break;
@@ -471,7 +474,7 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const negative = wouldGoNegative(proj, [...reverse, ...forward]);
   if (negative.length > 0) return fail('NEGATIVE_INVENTORY', '訂正すると所持数が負になる項目があります。', { scopes: negative });
   if (!historyOnly.includes('equipment')) {
-    const short = chronologyShortfall(data, others, forward, { date: p.occurredDateJst, order: occurredOrder }, reverse);
+    const short = chronologyShortfall(data, others, forward, { date: p.occurredDateJst, order: occurredOrder }, reverse, { date: e.occurredDateJst, order: e.occurredOrder });
     if (short.length > 0) return fail('BACKWARD_DEPENDENCY', 'この実施日の時点ではまだ持っていない装備を使う訂正になります（後の日付の記録で作られた★です）。実施日を確認してください。', { buckets: short });
   }
   const prev: ResultRevision = { revision: e.revision, outcome: e.outcome, deltas: e.deltas, historyOnlyScopes: e.historyOnlyScopes, occurredDateJst: e.occurredDateJst, savedAt: e.recordedAt, reason: null };
@@ -499,7 +502,9 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
       else return fail('SUCCESSOR_HAS_RESULT', '同じ工程の後継の予定に既に結果があるため、成功へ訂正できません。後継の記録を先に確認してください。', { successorAttemptId: s.attemptId, successorOutcome: s.outcome, successorDate: s.scheduledDate });
     }
   }
-  const daySkips = p.newOutcome !== 'skip' && e.outcome === 'skip' ? data.daySkips.filter((d) => d.date === e.occurredDateJst).map((d) => d.date) : [];
+  // 日単位のスキップの目印は、その日のスキップがほかに残っていない場合だけ外す（残っている間はその日に新しい予定を置かない）
+  const otherSkips = others.some((x) => x.status === 'active' && x.outcome === 'skip' && x.occurredDateJst === e.occurredDateJst);
+  const daySkips = p.newOutcome !== 'skip' && e.outcome === 'skip' && !otherSkips ? data.daySkips.filter((d) => d.date === e.occurredDateJst).map((d) => d.date) : [];
   return { ok: true, writes: { put: { resultEvents: [corrected], attempts }, remove: { daySkips }, meta: { planDirty: true } }, result: { revision: corrected.revision } };
 }
 

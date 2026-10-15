@@ -12,7 +12,7 @@ import { fixedHistoryOnlyScopes, inferInputSources, scopesOfDeltas, wouldGoNegat
 import { newId, type AppData } from '../../infrastructure/repository';
 import { costKeyPlain, recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import { DateBox } from '../../ui/SelectBox';
-import { allocationFrom, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { allocationFrom, plannedForAttempt, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 import './record.css';
 
 // 改修結果の記録（S13）・実施済み確認待ち（S28）・過去実績の scope 確認（S34）。design/10・12、ui-design-v1 第4巡・第12巡。
@@ -30,7 +30,8 @@ function useAttemptContext(attemptId: string) {
   const entry = placement?.entryIndex ?? event?.recipeSnapshot?.entryIndex ?? options[0]?.entryIndex ?? null;
   const cost = options.find((o) => o.entryIndex === entry)?.cost ?? options[0]?.cost ?? null;
   const mode = attempt?.mode ?? 'normal';
-  const planned = event?.recipeSnapshot?.plannedCost ?? plannedFrom(placement?.cost ?? cost, mode);
+  const openDraft = data.drafts.find((d) => d.attemptId === attemptId && d.status === 'open') ?? null;
+  const planned = plannedForAttempt({ eventPlanned: event?.recipeSnapshot?.plannedCost ?? null, draftPlanned: openDraft?.recipeSnapshot?.plannedCost ?? null, cost: placement?.cost ?? cost, mode });
   return { attempt, placement, event, planned, mode, entry };
 }
 
