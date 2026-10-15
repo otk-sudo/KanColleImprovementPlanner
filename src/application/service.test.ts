@@ -597,6 +597,30 @@ describe('レビュー指摘（PR #1）', () => {
     expect(handleRecordResult(d, await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }], fromDraftId: 'd1' })).ok).toBe(true);
   });
 
+  it('取り消された予定は、確認待ちとしても保存しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const data = { ...d0, attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, lifecycle: 'cancelled' as const } : x)) };
+    const r = handleSaveDraft(data, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [], unknownScopes: ['resource:8'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('ATTEMPT_CANCELLED');
+  });
+
+  it('同日の再挑戦の上限は、実施日で数える（今日の予定を別の日に実施した記録は今日の枠を使わない）', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'failure'), await base(s));
+    const d0 = await s.load();
+    // 今日の予定をもう1件、昨日実施したと記録した状態
+    const other = { ...a, attemptId: 'o|1:0>1|0@1', stepKey: 'o|1:0>1|0', goalId: 'g1', outcome: 'failure' as const, resultEventId: 'eo', dayOrder: 2 };
+    const ev: ResultEvent = { eventId: 'eo', attemptId: other.attemptId, stepKey: other.stepKey, goalId: 'g1', originalSequence: 99, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const data = { ...d0, attempts: [...d0.attempts, other], resultEvents: [...d0.resultEvents, ev] };
+    expect(handleSameDayRetry(data, { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' }).ok).toBe(true);
+  });
+
   it('一日分をスキップした日には、同日の再挑戦を追加しない', async () => {
     const s = await service();
     await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });

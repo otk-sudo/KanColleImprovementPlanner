@@ -73,6 +73,10 @@ interface StoreValue {
   refresh: () => Promise<AppData>;
   /** 画面を開いた時点の版を記録する（画面遷移ごとに呼ぶ） */
   capturePageBase: () => void;
+  /** 翌日処理を行い、保存できなければ再試行できる警告を残す。保存できたら true */
+  rolloverAndReport: () => Promise<boolean>;
+  /** 翌日処理を保存できず、再試行を待っている */
+  rolloverPending: boolean;
   recalculate: () => Promise<void>;
   importSession: ImportSession | null;
   setImportSession: (s: ImportSession | null) => void;
@@ -110,7 +114,7 @@ function messageFor(outcome: CommandOutcome<unknown>): string | null {
 }
 
 const CHANNEL = 'kancolle-improvement-planner';
-const ROLLOVER_FAILED = '日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してください。画面を開き直すと再試行します。';
+export const ROLLOVER_FAILED = '日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してから再試行してください（画面を開き直したときも再試行します）。';
 
 export function StoreProvider({ service, master, manifest, initialData, children }: { service: AppService; master: MasterIndex; manifest: MasterManifest; initialData: AppData; children: ReactNode }) {
   const [data, setData] = useState<AppData>(initialData);
@@ -125,6 +129,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const busyRef = useRef(false);
   const dataRef = useRef<AppData>(initialData);
   const rolloverFailed = useRef(false);
+  const [rolloverPending, setRolloverPending] = useState(false);
   // 他タブの通知で表示用のデータを読み直しても、この版は更新しない（開いていた画面の確定を競合として扱う）
   const pageBase = useRef<CommandBase>(baseOf(initialData));
 
@@ -207,23 +212,30 @@ export function StoreProvider({ service, master, manifest, initialData, children
     [service, refresh, broadcast],
   );
 
+  // 翌日処理。保存できなかった場合は、再試行で保存できるまで消えない警告にする（起動後・訂正後・確認待ちの取消後で共通）
+  const rolloverAndReport = useCallback(async () => {
+    const r = await service.rollover();
+    if (r.moved > 0) broadcast();
+    await refresh();
+    if (!r.saved) {
+      rolloverFailed.current = true;
+      setRolloverPending(true);
+      setSaveState('error');
+      setSaveMessage(ROLLOVER_FAILED);
+    } else if (rolloverFailed.current) {
+      rolloverFailed.current = false;
+      setRolloverPending(false);
+      setSaveMessage((m) => (m === ROLLOVER_FAILED ? null : m));
+    }
+    return r.saved;
+  }, [service, refresh, broadcast]);
+
   // 起動・フォーカス復帰・日付変更・他タブの変更
   useEffect(() => {
     let disposed = false;
     const check = async () => {
       if (disposed) return;
-      const r = await service.rollover();
-      if (r.moved > 0) broadcast();
-      await refresh();
-      // 保存できなかった場合は、次に画面を開き直す（フォーカス復帰）まで消えない警告にする
-      if (!r.saved) {
-        rolloverFailed.current = true;
-        setSaveState('error');
-        setSaveMessage(ROLLOVER_FAILED);
-      } else if (rolloverFailed.current) {
-        rolloverFailed.current = false;
-        setSaveMessage((m) => (m === ROLLOVER_FAILED ? null : m));
-      }
+      await rolloverAndReport();
     };
     try {
       channel.current = new BroadcastChannel(CHANNEL);
@@ -251,7 +263,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
       window.clearInterval(timer);
       channel.current?.close();
     };
-  }, [service, refresh, broadcast]);
+  }, [service, refresh, broadcast, rolloverAndReport]);
 
   const projection = useMemo(() => projectInventory(data.baselines, data.resultEvents, data.drafts), [data]);
   const plan = useMemo(() => {
@@ -279,6 +291,8 @@ export function StoreProvider({ service, master, manifest, initialData, children
     run,
     refresh,
     capturePageBase,
+    rolloverAndReport,
+    rolloverPending,
     recalculate,
     importSession,
     setImportSession,

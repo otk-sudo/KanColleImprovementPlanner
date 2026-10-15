@@ -213,7 +213,7 @@ export function RolloverDetailPage() {
 
 export function CancelDraftPage() {
   const { draftId = '' } = useParams();
-  const { data, master, run, busy, service, refresh, today } = useStore();
+  const { data, master, run, busy, rolloverAndReport, today } = useStore();
   const navigate = useNavigate();
   const draft = data.drafts.find((d) => d.draftId === draftId);
   const [reason, setReason] = useState('');
@@ -236,10 +236,8 @@ export function CancelDraftPage() {
     const r = await run('CancelDraftAsNotPerformed', handleCancelDraft, { draftId, reason, now: new Date().toISOString() }, { commandId });
     if (!r.ok) return setMessage(r.message);
     // 過去日の未実施に戻った場合は翌日処理の対象として再評価する
-    if (compareDate(draft.occurredDateJst, today) < 0) {
-      await service.rollover();
-      await refresh();
-    }
+    // 保存できなければ、移動先の画面に再試行できる警告を残す
+    if (compareDate(draft.occurredDateJst, today) < 0) await rolloverAndReport();
     navigate('/history?tab=drafts');
   };
   return (

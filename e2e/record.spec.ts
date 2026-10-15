@@ -145,6 +145,44 @@ test('A07：過去日の記録を「実施していなかった」へ訂正す�
   expect(active[0]!.scheduledDate).toBe('2026-10-16');
 });
 
+test('A09：訂正画面で別の記録へ移ったら、その記録の内容でフォームを作り直す', async ({ page }) => {
+  await start(page, { data: { ...seed, settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }, route: '/goals' });
+  await addGoal(page, '主砲A', 7);
+  await recordToday(page, '成功'); // ★5→★6（釘4）
+  await recordToday(page, '成功'); // ★6→★7（釘2）
+  const d = await state(page);
+  const devmats = (id: string) => -(d.resultEvents.find((e) => e.eventId === id)!.deltas.find((x) => x.scope === 'resource:7')?.amount ?? 0);
+  const [first, second] = [...d.resultEvents].sort((a, b) => a.originalSequence - b.originalSequence);
+  expect([devmats(first!.eventId), devmats(second!.eventId)]).toEqual([4, 2]);
+  await page.goto(`/#/history/events/${encodeURIComponent(first!.eventId)}/correct`);
+  await expect(page.getByLabel('開発資材')).toHaveValue('4');
+  // 同じ画面のまま別の記録の訂正へ移る（依存する記録へのリンクと同じ）
+  await page.goto(`/#/history/events/${encodeURIComponent(second!.eventId)}/correct`);
+  await expect(page.getByLabel('開発資材')).toHaveValue('2');
+});
+
+test('A07：訂正後の日付変更の処理を保存できなければ、警告と再試行を出して移動先に残す', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await recordToday(page, '成功');
+  const original = (await state(page)).attempts.find((a) => a.scheduledDate === '2026-10-14' && a.outcome === 'success')!;
+  await page.clock.setFixedTime(new Date('2026-10-15T00:00:00.000Z'));
+  await page.reload();
+  await page.waitForSelector('h1');
+  await page.goto('/#/history');
+  await page.getByRole('link', { name: '記録を修正' }).first().click();
+  await page.getByRole('radio', { name: '実施していなかった' }).click();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await page.evaluate(() => window.__kaishu!.failRollover(1));
+  await page.getByRole('button', { name: 'この内容で訂正' }).click();
+  await page.waitForURL(/#\/history$/);
+  await expect(page.getByText('日付変更の処理（未完了の予定の繰越）を保存できませんでした。').first()).toBeVisible();
+  expect((await state(page)).attempts.find((a) => a.attemptId === original.attemptId)?.lifecycle).toBe('active');
+  await page.getByRole('button', { name: '日付変更の処理を再試行' }).click();
+  await expect(page.getByText('日付変更の処理（未完了の予定の繰越）を保存できませんでした。')).toHaveCount(0);
+  expect((await state(page)).attempts.find((a) => a.attemptId === original.attemptId)?.lifecycle).toBe('superseded');
+});
+
 test('A10：同日の取り込みで確認待ちになった予定は、そのまま確定できず、取り込み前の記録漏れとして装備を履歴のみにすれば記録できる', async ({ page }) => {
   await start(page, { data: seed, route: '/goals' });
   await addGoal(page, '主砲A', 6);

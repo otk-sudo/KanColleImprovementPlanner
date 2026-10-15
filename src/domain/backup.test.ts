@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, parseBackup, type BackupData } from './backup';
+import { BACKUP_FORMAT, BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION, parseBackup, readBackupFile, type BackupData } from './backup';
 import { DEFAULT_SETTINGS } from './model';
 import { baselinesFrom } from '../test-support/planFixtures';
 
@@ -88,8 +88,27 @@ describe('バックアップの検証', () => {
     expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('A', 'e1')] })), 'm1').ok).toBe(true);
   });
 
+  it('開いている確認待ちの下書きは1つの試行に1つだけで、試行は確認待ちの結果になっている', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const attempt = (outcome: 'draft' | 'none') => ({ attemptId: 'A', stepKey: 's', goalId: 'g', transition: t, scheduledDate: '2026-10-13', dayOrder: 1, outcome, lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: null, cancelReason: null });
+    const draft = (draftId: string) => ({ draftId, attemptId: 'A', stepKey: 's', occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome: 'failure' as const, knownConsumptions: [], unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open' as const, cancelReason: null, recipeSnapshot: null });
+    expect(parseBackup(JSON.stringify(backup({ attempts: [attempt('draft')], drafts: [draft('d1'), draft('d2')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ attempts: [attempt('none')], drafts: [draft('d1')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ attempts: [attempt('draft')], drafts: [] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ attempts: [attempt('draft')], drafts: [draft('d1')] })), 'm1').ok).toBe(true);
+  });
+
   it('数量が負の基準在庫を拒否する', () => {
     const bad = backup({ baselines: baselinesFrom({ resources: { 8: 10 } }).map((b) => ({ ...b, value: -1 })) });
     expect(parseBackup(JSON.stringify(bad), 'm1').ok).toBe(false);
+  });
+});
+
+describe('バックアップファイルの読み込み', () => {
+  it('上限を超えるファイルは本文を読み込む前に拒否する（巨大なファイルでタブを固めない）', async () => {
+    const huge = { size: BACKUP_MAX_BYTES + 1, text: () => Promise.reject(new Error('読み込んではいけない')) };
+    expect(await readBackupFile(huge, 'm1')).toMatchObject({ ok: false, code: 'BACKUP_TOO_LARGE' });
+    const ok = { size: 10, text: () => Promise.resolve(JSON.stringify(backup())) };
+    expect((await readBackupFile(ok, 'm1')).ok).toBe(true);
   });
 });

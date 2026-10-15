@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useParams } from 'react-router';
 import { CalendarPage, DayPage, PendingPage, SkipAttemptPage, SkipDayPage, WeekPage } from '../features/calendar/calendarPages';
 import { GoalFormPage, GoalsPage, GoalStepsPage, UnplacedPage } from '../features/goals/goalsPages';
 import { GuidePage, GuideStepsPage } from '../features/guide/guidePages';
@@ -18,6 +18,12 @@ function Home() {
 }
 
 // 画面ID（docs/ui-reference）との対応はコメントで示す
+/** 記録・訂正・再開の画面は、URL の対象（予定・記録・下書き）が変わったら入力を作り直す */
+function KeyedRecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) {
+  const params = useParams();
+  return <RecordPage key={`${mode}:${params.attemptId ?? params.eventId ?? params.draftId ?? ''}`} mode={mode} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -28,7 +34,7 @@ export function AppRoutes() {
       <Route path="/calendar/day/:date" element={<DayPage />} /> {/* S18 */}
       <Route path="/calendar/day/:date/skip" element={<SkipDayPage />} /> {/* S25 */}
       <Route path="/attempts/:attemptId/skip" element={<SkipAttemptPage />} /> {/* S24 */}
-      <Route path="/attempts/:attemptId/record" element={<RecordPage mode="record" />} /> {/* S13 */}
+      <Route path="/attempts/:attemptId/record" element={<KeyedRecordPage mode="record" />} /> {/* S13 */}
       <Route path="/attempts/:attemptId/draft" element={<DraftConfirmPage />} /> {/* S28 */}
       <Route path="/attempts/:attemptId/past" element={<PastRecordPage />} /> {/* S34 */}
       <Route path="/attempts/:attemptId/pending" element={<PendingPage />} /> {/* S30 */}
@@ -51,8 +57,8 @@ export function AppRoutes() {
       <Route path="/import/confirm" element={<ImportConfirmPage />} /> {/* S27 */}
       <Route path="/history" element={<HistoryPage />} /> {/* S09 */}
       <Route path="/history/rollover/:attemptId" element={<RolloverDetailPage />} /> {/* S29 */}
-      <Route path="/history/events/:eventId/correct" element={<RecordPage mode="correct" />} /> {/* S13（訂正） */}
-      <Route path="/history/drafts/:draftId/resume" element={<RecordPage mode="resume" />} /> {/* S13（再開） */}
+      <Route path="/history/events/:eventId/correct" element={<KeyedRecordPage mode="correct" />} /> {/* S13（訂正） */}
+      <Route path="/history/drafts/:draftId/resume" element={<KeyedRecordPage mode="resume" />} /> {/* S13（再開） */}
       <Route path="/history/drafts/:draftId/cancel" element={<CancelDraftPage />} /> {/* S31 */}
       <Route path="/settings" element={<SettingsPage />} /> {/* S10 */}
       <Route path="/settings/restore" element={<RestorePage masterMode={false} />} /> {/* S21 */}

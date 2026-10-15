@@ -245,6 +245,27 @@ function invalidAmount(deltas: Delta[]): boolean {
 const MASTER_REVIEW_MESSAGE = '共通マスターの更新を確認するまで、改修結果は記録できません。設定の「共通マスター」で確認してから記録してください。';
 const INVALID_AMOUNT_MESSAGE = `消費数は0〜${MAX_RECORD_AMOUNT.toLocaleString('ja-JP')}の整数で入力してください。`;
 
+/**
+ * その日の実施枠の使用数（計画と同じ数え方）。未実施の予定は予定日、結果は有効な実績の実施日、
+ * 確認待ちは開いている下書きの実施日で数える。
+ */
+function usedSlots(data: AppData, date: DateJst): number {
+  const eventById = new Map(data.resultEvents.map((e) => [e.eventId, e]));
+  let n = 0;
+  for (const a of data.attempts) {
+    if (a.lifecycle === 'cancelled') continue;
+    if (a.outcome === 'none') {
+      if (a.lifecycle === 'active' && a.scheduledDate === date) n++;
+      continue;
+    }
+    const draft = a.outcome === 'draft' ? data.drafts.find((d) => d.attemptId === a.attemptId && d.status === 'open') : undefined;
+    const event = a.resultEventId ? eventById.get(a.resultEventId) : undefined;
+    const at = draft ? draft.occurredDateJst : event && event.status === 'active' ? event.occurredDateJst : a.scheduledDate;
+    if (at === date) n++;
+  }
+  return n;
+}
+
 function seqOf(a: Attempt): number {
   return Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1)) || 0;
 }
@@ -393,6 +414,8 @@ export interface SaveDraftPayload {
 export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResult<{ draftId: string }> {
   if (!p.confirmedPerformed) return fail('NOT_CONFIRMED', '「ゲームで実施済み」を確認してから保存してください。');
   if (invalidAmount(p.knownConsumptions)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
+  const target = data.attempts.find((a) => a.attemptId === p.attemptId);
+  if (target?.lifecycle === 'cancelled') return fail('ATTEMPT_CANCELLED', '取り消された予定には記録できません。');
   if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
   const attempt = data.attempts.find((a) => a.attemptId === p.attemptId);
   if (!attempt) return fail('ATTEMPT_NOT_FOUND', '対象の予定が見つかりません。');
@@ -535,7 +558,7 @@ export function handleSameDayRetry(data: AppData, p: { stepKey: string; attemptI
   if (data.daySkips.some((d) => d.date === p.today)) return fail('DAY_SKIPPED', 'この日はスキップしたため、再挑戦を追加できません。翌日以降に予定を配置します。');
   // 目標を削除した工程の失敗は履歴として残すだけで、再挑戦は作らない
   if (latest.goalId !== null && !data.goals.some((g) => g.goalId === latest.goalId)) return fail('GOAL_NOT_FOUND', 'この工程の目標は削除されているため、再挑戦を追加できません。');
-  const used = data.attempts.filter((a) => a.scheduledDate === p.today && a.lifecycle !== 'cancelled' && a.lifecycle !== 'superseded').length;
+  const used = usedSlots(data, p.today);
   if (used >= p.limit) return fail('DAY_LIMIT', '今日の改修上限に達しているため追加できません。設定で上限を変更できます。');
   const maxOrder = Math.max(0, ...data.attempts.filter((a) => a.scheduledDate === p.today).map((a) => a.dayOrder));
   const retry: Attempt = {

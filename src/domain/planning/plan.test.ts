@@ -379,6 +379,27 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
   });
 
+  it('取り消された再挑戦の後ろでも、元の失敗が工程の番号を保ち続ける（同じ工程を別のキーで作り直さない）', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    // 失敗 → 再挑戦 → 元を成功へ訂正（再挑戦は取消）→ 元を失敗へ戻した状態
+    const failed = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-13', outcome: 'failure' });
+    const cancelledRetry = attempt({ attemptId: 'g|1:0>1|0@2', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-13', outcome: 'none', lifecycle: 'cancelled' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [failed, cancelledRetry] }));
+    expect(plan.steps.map((s) => s.stepKey)).toEqual(['g|1:0>1|0']);
+    expect(plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')?.attemptId).toBe('g|1:0>1|0@3');
+  });
+
+  it('失敗の翌日送りは実施日で判断する（今日の予定を昨日失敗したと記録したら、今日から再挑戦できる）', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const failed = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'failure', resultEventId: 'e1' });
+    const ev = (date: string): ResultEvent => ({ eventId: 'e1', attemptId: failed.attemptId, stepKey: failed.stepKey, goalId: 'g', originalSequence: 1, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: date, occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });
+    const spec = { master: simpleMaster(), inventory: { equipment: [[1, 0, 1]] as [number, number, number][], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [failed] };
+    expect(buildPlan(planInput({ ...spec, events: [ev('2026-10-13')] })).placements.find((p) => p.stepKey === failed.stepKey)?.date).toBe('2026-10-14');
+    expect(buildPlan(planInput({ ...spec, events: [ev('2026-10-14')] })).placements.find((p) => p.stepKey === failed.stepKey)?.date).toBe('2026-10-15');
+  });
+
   it('今日の実施枠は、結果の実施日で数える（繰越元を今日実施した記録は今日の枠を使い、別の日に記録した今日の予定は使わない）', () => {
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
     const ev = (id: string, attemptId: string, date: string): ResultEvent => ({ eventId: id, attemptId, stepKey: 'o', goalId: 'o', originalSequence: 1, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: date, occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });

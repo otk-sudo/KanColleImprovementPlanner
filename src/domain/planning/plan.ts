@@ -141,6 +141,16 @@ export function attemptSeq(a: Pick<Attempt, 'attemptId'>): number {
 export function buildPlan(input: PlanInput): PlanResult {
   const { master: m, todayJst: today, inventory: inv } = input;
   const tomorrow = addDays(today, 1);
+  const eventById = new Map((input.resultEvents ?? []).map((e) => [e.eventId, e]));
+  /** 結果・確認待ちの実施日と実施順 */
+  const occurrence = (a: Attempt): { date: DateJst | null; order: number } | null => {
+    const draft = a.outcome === 'draft' ? input.drafts.find((d) => d.attemptId === a.attemptId && d.status === 'open') : undefined;
+    if (draft) return { date: draft.occurredDateJst, order: draft.occurredOrder };
+    const event = a.resultEventId ? eventById.get(a.resultEventId) : undefined;
+    if (event && event.status === 'active') return { date: event.occurredDateJst, order: event.occurredOrder };
+    // 実績の一覧を渡さない呼び出しでは、繰り越していない試行を予定日で数える
+    return input.resultEvents || a.lifecycle === 'superseded' ? null : { date: a.scheduledDate, order: a.dayOrder };
+  };
   const goals = [...input.goals].sort(goalOrder);
   const goalRank = new Map(goals.map((g, i) => [g.goalId, i]));
   const preferred = new Map(input.preferredHelpers.map((p) => [p.stepKey, p.shipId]));
@@ -402,8 +412,9 @@ export function buildPlan(input: PlanInput): PlanResult {
       const ordinal = Number(key.slice(prefix.length));
       if (!Number.isInteger(ordinal)) continue;
       used.add(ordinal);
-      const latest = list.at(-1)!;
-      if (isClaim(latest)) claims.push({ ordinal, date: latest.scheduledDate, order: latest.dayOrder });
+      // 取り消された試行（訂正で不要になった再挑戦など）は飛ばし、その前の試行で番号を保つ
+      const latest = [...list].reverse().find((a) => a.lifecycle !== 'cancelled');
+      if (latest && isClaim(latest)) claims.push({ ordinal, date: latest.scheduledDate, order: latest.dayOrder });
     }
     claims.sort((a, b) => (a.date === b.date ? 0 : a.date === null ? 1 : b.date === null ? -1 : compareDate(a.date, b.date)) || a.order - b.order || a.ordinal - b.ordinal);
     const ordinals = claims.slice(0, members.length).map((c) => c.ordinal);
@@ -444,7 +455,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       let earliestDate = today;
       // 確認待ちの結果がある工程は、繰越後の後継があっても結果が決まるまで実行しない（元の試行が成功なら後継は不要になる）
       if ((attemptsByKey.get(stepKey) ?? []).some((a) => a.outcome === 'draft' && a.lifecycle !== 'cancelled')) blockers.unshift('RESULT_PENDING');
-      if (latest && (latest.outcome === 'failure' || latest.outcome === 'skip') && latest.scheduledDate === today) earliestDate = tomorrow;
+      // 今日実施した失敗・スキップの工程は翌日以降（実施日で判断し、別の日に実施した記録は今日から再挑戦できる）
+      if (latest && (latest.outcome === 'failure' || latest.outcome === 'skip') && (occurrence(latest)?.date ?? latest.scheduledDate) === today) earliestDate = tomorrow;
       steps.push({
         stepKey,
         goalId: chain.goal.goalId,
@@ -504,16 +516,6 @@ export function buildPlan(input: PlanInput): PlanResult {
       occupy(today, a.dayOrder);
     }
   }
-  const eventById = new Map((input.resultEvents ?? []).map((e) => [e.eventId, e]));
-  /** 結果・確認待ちの実施日と実施順 */
-  const occurrence = (a: Attempt): { date: DateJst | null; order: number } | null => {
-    const draft = a.outcome === 'draft' ? input.drafts.find((d) => d.attemptId === a.attemptId && d.status === 'open') : undefined;
-    if (draft) return { date: draft.occurredDateJst, order: draft.occurredOrder };
-    const event = a.resultEventId ? eventById.get(a.resultEventId) : undefined;
-    if (event && event.status === 'active') return { date: event.occurredDateJst, order: event.occurredOrder };
-    // 実績の一覧を渡さない呼び出しでは、繰り越していない試行を予定日で数える
-    return input.resultEvents || a.lifecycle === 'superseded' ? null : { date: a.scheduledDate, order: a.dayOrder };
-  };
   for (const a of input.attempts) {
     if (a.lifecycle === 'cancelled' || a.outcome === 'none') continue;
     const at = occurrence(a);

@@ -89,7 +89,7 @@ function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'],
 
 export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) {
   const params = useParams();
-  const { data, master, today, projection, formCache, run, busy, service, refresh } = useStore();
+  const { data, master, today, projection, formCache, run, busy, rolloverAndReport } = useStore();
   const navigate = useNavigate();
   const event = mode === 'correct' ? (data.resultEvents.find((e) => e.eventId === params.eventId) ?? null) : null;
   const draft = mode === 'resume' ? (data.drafts.find((d) => d.draftId === params.draftId) ?? null) : null;
@@ -182,10 +182,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       }
       formCache.delete(formKey(attemptId));
       // 過去日の予定が未実施・スキップに戻った場合は、すぐ翌日処理の対象として再評価する
-      if ((form.outcome === 'voided' || form.outcome === 'skip') && compareDate(attempt.scheduledDate ?? form.occurredDate, today) < 0) {
-        await service.rollover();
-        await refresh();
-      }
+      // 保存できなければ、移動先の画面に再試行できる警告を残す
+      if ((form.outcome === 'voided' || form.outcome === 'skip') && compareDate(attempt.scheduledDate ?? form.occurredDate, today) < 0) await rolloverAndReport();
       navigate('/history');
       return;
     }

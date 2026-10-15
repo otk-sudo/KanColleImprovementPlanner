@@ -213,8 +213,16 @@ export type BackupCheck =
 /** 旧版からの移行（現在は版1のみ。追加時は純粋関数を順に適用する） */
 const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {};
 
+const TOO_LARGE: BackupCheck = { ok: false, code: 'BACKUP_TOO_LARGE', message: 'バックアップファイルが大きすぎます。', issues: [] };
+
+/** バックアップファイルを読み込んで検証する。上限を超えるファイルは本文を読み込む前に拒否する */
+export async function readBackupFile(file: { size: number; text(): Promise<string> }, currentMasterVersion: string): Promise<BackupCheck> {
+  if (file.size > BACKUP_MAX_BYTES) return TOO_LARGE;
+  return parseBackup(await file.text(), currentMasterVersion);
+}
+
 export function parseBackup(text: string, currentMasterVersion: string): BackupCheck {
-  if (text.length > BACKUP_MAX_BYTES) return { ok: false, code: 'BACKUP_TOO_LARGE', message: 'バックアップファイルが大きすぎます。', issues: [] };
+  if (text.length > BACKUP_MAX_BYTES) return TOO_LARGE;
   let raw: unknown;
   try {
     raw = JSON.parse(text.replace(/^\uFEFF/, ''));
@@ -268,6 +276,15 @@ export function referentialIssues(b: BackupData): string[] {
     if (e.fromDraftId && !draftIds.has(e.fromDraftId)) issues.push(`実績 ${e.eventId} の下書きがありません`);
   }
   for (const d of b.drafts) if (!attemptIds.has(d.attemptId)) issues.push(`下書き ${d.draftId} の試行がありません`);
+  // 開いている確認待ちの下書きは1つの試行に1つだけで、その試行は確認待ちの結果になっている（逆も同じ）
+  const openByAttempt = new Map<string, number>();
+  for (const d of b.drafts) if (d.status === 'open') openByAttempt.set(d.attemptId, (openByAttempt.get(d.attemptId) ?? 0) + 1);
+  for (const [attemptId, n] of openByAttempt) {
+    if (n > 1) issues.push(`試行 ${attemptId} に開いている確認待ちが複数あります`);
+    const a = attemptById.get(attemptId);
+    if (a && a.outcome !== 'draft') issues.push(`試行 ${attemptId} は確認待ちではないのに、開いている確認待ちがあります`);
+  }
+  for (const a of b.attempts) if (a.outcome === 'draft' && !openByAttempt.has(a.attemptId)) issues.push(`試行 ${a.attemptId} の確認待ちの記録がありません`);
   for (const a of b.attempts) {
     if (a.predecessorAttemptId && !attemptIds.has(a.predecessorAttemptId)) issues.push(`試行 ${a.attemptId} の前の試行がありません`);
     if (a.resultEventId && !eventIds.has(a.resultEventId)) issues.push(`試行 ${a.attemptId} の実績がありません`);

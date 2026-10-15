@@ -4,7 +4,7 @@ import { Page } from '../../app/Shell';
 import { useCommandId, useStore } from '../../app/store';
 import { handleAddHoliday, handleApplyMaster, handleRemoveHoliday, handleRestore, handleSaveSettings } from '../../application/commands';
 import { backupFileName, exportBackup } from '../../application/backupExport';
-import { parseBackup, summarizeBackup, type BackupCheck } from '../../domain/backup';
+import { readBackupFile, summarizeBackup, type BackupCheck } from '../../domain/backup';
 import { formatJstDateTime, formatSlashDate, isValidDate, WEEKDAY_LABELS } from '../../domain/jst';
 import { transitionOptions } from '../../domain/master';
 import { newId } from '../../infrastructure/repository';
@@ -42,8 +42,8 @@ function useBackupPicker() {
   const ref = useRef<HTMLInputElement>(null);
   const onFile = async (f: File | undefined) => {
     if (!f) return;
-    const text = await f.text();
-    const check = parseBackup(text, master.version);
+    // 上限を超えるファイルは本文を読み込む前に拒否する
+    const check = await readBackupFile(f, master.version);
     formCache.set('restore', { fileName: f.name, check, preSaved: false, holdConfirmed: false } satisfies RestoreSession);
     navigate(check.ok && check.masterMissing ? '/settings/restore/master' : '/settings/restore');
   };
