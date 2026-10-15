@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FX, fixtureMaster, stage } from '../../test-support/fixtureMaster';
 import { attempt, goal, planInput } from '../../test-support/planFixtures';
 import type { MasterFile } from '../master/schema';
+import type { DraftResult } from '../model';
 import { buildPlan, COMPUTATION_LIMITS } from './plan';
 
 const ALL = [0, 1, 2, 3, 4, 5, 6];
@@ -321,6 +322,31 @@ describe('確実化と完了予定（design/17）', () => {
 });
 
 describe('レビュー指摘（PR #1）', () => {
+  const draftOf = (attemptId: string, stepKey: string, reportedOutcome: 'success' | 'failure', knownConsumptions: DraftResult['knownConsumptions']): DraftResult => ({ draftId: `d-${attemptId}`, attemptId, stepKey, occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome, knownConsumptions, unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open', cancelReason: null, recipeSnapshot: null });
+
+  it('確認待ちの下書きが確保した素材装備は、計画で別の工程に割り当てない', () => {
+    // Y★0 を2個所持。別の改修の下書きが Y★0 を2個確保済み。X★0→★1 は Y を2個使う
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const other = attempt({ attemptId: 'o|9:0>1|0@1', stepKey: 'o|9:0>1|0', goalId: 'o', transition: { kind: 'improve', equipmentId: 9, fromStar: 0, toStar: 1 }, scheduledDate: '2026-10-13', outcome: 'draft' });
+    const draft = draftOf(other.attemptId, other.stepKey, 'failure', [{ scope: 'equipment', equipmentId: 2, star: 0, amount: -2 }]);
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 2 }), inventory: { equipment: [[1, 0, 1], [2, 0, 2]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [other], drafts: [draft] }));
+    const p = plan.placements.find((x) => x.goalId === 'g')!;
+    expect(p.shortages.find((s) => s.key === 'equipment:2')?.deficit).toBe(2);
+  });
+
+  it('成功と報告した下書きの改修対象は、その目標の工程として残し、他の目標や素材に使わない', () => {
+    // X★0 を1個所持。目標 g の X★0→★1 を成功と報告して確認待ち。優先度の高い目標 h も X★1 を目指す
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1, priority: 2 });
+    const h = goal({ goalId: 'h', equipmentId: 1, targetStar: 1, count: 1, priority: 1 });
+    const pending = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'draft' });
+    const draft = draftOf(pending.attemptId, pending.stepKey, 'success', [{ scope: 'equipment', equipmentId: 1, star: 0, amount: -1 }]);
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [h, g], attempts: [pending], drafts: [draft] }));
+    expect(plan.steps.find((s) => s.stepKey === pending.stepKey)?.blockers).toContain('RESULT_PENDING');
+    expect(plan.steps.filter((s) => s.goalId === 'h')).toEqual([]);
+    expect(plan.unplaced.find((p) => p.goalId === 'h')?.reasons).toEqual(['TARGET_MISSING']);
+  });
+
   it('工程数が計算の上限に達したら、それ以上の改修対象の工程を展開せず、残りを計算上限として未配置にする', () => {
     // ★0 を 1,100 個所持し ★10 を 1,100 個目指す（10 工程 × 1,100 = 11,000 工程 > 上限 10,000）
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 10, count: 1100 });
@@ -329,6 +355,16 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.steps.length).toBeLessThanOrEqual(COMPUTATION_LIMITS.maxSteps + 10);
     const limited = plan.unplaced.filter((p) => p.goalId === 'g' && p.reasons.includes('COMPUTATION_LIMIT'));
     expect(limited.length).toBeGreaterThan(0);
+    expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
+  });
+
+  it('素材の製作でも工程数が計算の上限に達したら、それ以上の製作の鎖を作らず計算上限として示す', () => {
+    // X★0→★10 の各段階で Y を 100 個使い、Y は Z★0→★MAX→Y で製作（11 工程）。製作 1,000 個 = 11,000 工程 > 上限
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 10, count: 1, materialRoutes: { '2': { kind: 'craft', routeKey: '3>2' } } });
+    const plan = buildPlan(planInput({ master: simpleMaster({ fodder: 100, craft: true }), inventory: { equipment: [[1, 0, 1], [3, 0, 1000]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { searchDays: 7 } }));
+    expect(plan.computationLimited).toBe(true);
+    expect(plan.steps.length).toBeLessThanOrEqual(COMPUTATION_LIMITS.maxSteps + 11);
+    expect(plan.unplaced.some((p) => p.goalId === 'g' && p.reasons.includes('COMPUTATION_LIMIT'))).toBe(true);
     expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
   });
 

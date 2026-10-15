@@ -319,13 +319,14 @@ export function ProtectionPage() {
   const reconciling = usage?.reconciliationRequired ?? false;
   const prev = useStore().data.protections.find((p) => p.bucket === bucket);
   const instances = (projection.equipment.instances ?? []).filter((i) => i.equipmentId === equipmentId && i.star === star);
-  const [count, setCount] = useState(Math.min(requested, owned));
+  const useInstances = projection.equipment.granularity === 'instance' && instances.length > 0;
   const [selected, setSelected] = useState<number[]>(prev?.instanceIds?.filter((id) => instances.some((i) => i.instanceId === id)) ?? []);
+  // 個体単位では、保護数は選んだ個体の数（取り込みで消えた個体は選択から外れる）
+  const [count, setCount] = useState(() => (useInstances ? selected.length : Math.min(requested, owned)));
   const [message, setMessage] = useState<string | null>(null);
   const snapshotAtOpen = useMemo(() => projection.equipment.snapshotId, [bucket]); // eslint-disable-line react-hooks/exhaustive-deps
   const preview = protectionChangePreview({ owned, goalUse, newManual: count });
   const commandId = useCommandId(bucket, count, selected);
-  const useInstances = projection.equipment.granularity === 'instance' && instances.length > 0;
   const name = equipLabel(master, equipmentId, star);
   const save = async () => {
     const r = await run(reconciling ? 'ResolveProtection' : 'SetProtection', handleSetProtection, {

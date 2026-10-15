@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '../../domain/model';
 import type { Placement, PlanResult } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { attempt } from '../../test-support/planFixtures';
-import { buildDays, latestAttemptOf } from './calendarModel';
+import { buildDays, dayRequirements, latestAttemptOf, monthCellSummary, type DayEntry } from './calendarModel';
 
 const t = (from: number) => ({ kind: 'improve' as const, equipmentId: 1, fromStar: from, toStar: from + 1 });
 
@@ -57,5 +57,42 @@ describe('前提工程の最新の試行（S30）', () => {
     const list = [1, 2, 9, 10].map((n) => attempt({ attemptId: `s@${n}`, stepKey: 's', goalId: 'g', transition: t(0), outcome: n === 10 ? 'success' : 'failure' }));
     expect(latestAttemptOf(list, 's')?.attemptId).toBe('s@10');
     expect(latestAttemptOf(list, 'other')).toBeUndefined();
+  });
+});
+
+describe('日別の必要量と見込み在庫（S18）', () => {
+  const zero = { normal: 0, guaranteed: 0 };
+  const cost = (equipment: { equipmentId: number; count: number }[]) => ({ fuel: 0, ammo: 0, steel: 0, bauxite: 0, devmats: zero, screws: zero, equipment, useItems: [] });
+  const placement = (stepKey: string, date: string, equipment: { equipmentId: number; count: number }[]) => ({ stepKey, date, dayOrder: 1, mode: 'normal', cost: cost(equipment) }) as unknown as Placement;
+  const step = (stepKey: string, role: 'target' | 'craft', craftFor: number | null, transition: unknown) => ({ stepKey, role, craftFor, transition }) as unknown as PlanResult['steps'][number];
+
+  it('後日に製作する素材は、その日の見込み在庫に数えない', () => {
+    // Y（ID 2）は 10/15 の製作で1個できる。10/14 の別の改修が Y を1個使う
+    const plan = {
+      placements: [placement('craft', '2026-10-15', []), placement('use', '2026-10-14', [{ equipmentId: 2, count: 1 }])],
+      steps: [step('craft', 'craft', 2, { kind: 'convert', equipmentId: 3, toEquipmentId: 2, toStar: 0 }), step('use', 'target', null, t(0))],
+      totals: [{ key: 'equipment:2', need: 1, available: 0, planned: 1, shortage: 0, held: 0 }],
+    } as unknown as PlanResult;
+    expect(dayRequirements(plan, '2026-10-14')).toEqual([{ key: 'equipment:2', need: 1, available: 0 }]);
+    // 製作が同じ日以前なら数える
+    const sameDay = { ...plan, placements: [placement('craft', '2026-10-14', []), placement('use', '2026-10-14', [{ equipmentId: 2, count: 1 }])] } as PlanResult;
+    expect(dayRequirements(sameDay, '2026-10-14')).toEqual([{ key: 'equipment:2', need: 1, available: 1 }]);
+  });
+});
+
+describe('月表示のセルの集計（S01）', () => {
+  const entry = (kind: DayEntry['kind'], transition: DayEntry['transition'] = t(0)): DayEntry => ({ kind, attemptId: null, stepKey: 's', goalId: 'g', transition, placement: null, attempt: null, event: null, order: 1 });
+  const conv = { kind: 'convert' as const, equipmentId: 1, toEquipmentId: 2, toStar: 0 };
+
+  it('失敗・スキップ・確認待ちは実施回数に数えるが、★の進みや更新には数えない', () => {
+    expect(monthCellSummary([entry('failure')])).toBe('1回');
+    expect(monthCellSummary([entry('skip'), entry('review'), entry('draft')])).toBe('3回');
+    expect(monthCellSummary([entry('success'), entry('failure')])).toBe('2回 / ★+1');
+  });
+
+  it('予定（仮配置・前提待ちを含む）と成功は進みとして数え、繰り越した試行は数えない', () => {
+    expect(monthCellSummary([entry('planned'), entry('tentative'), entry('pending'), entry('superseded')])).toBe('3回 / ★+3');
+    expect(monthCellSummary([entry('planned'), entry('success', conv)])).toBe('2回 / ★+1・更新1');
+    expect(monthCellSummary([entry('provisional', conv)])).toBe('1回 / 更新1');
   });
 });

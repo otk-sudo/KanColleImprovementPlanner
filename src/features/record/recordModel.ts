@@ -3,7 +3,7 @@ import { equipmentStars } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
 import type { DateJst } from '../../domain/jst';
 import type { AttemptCost, MasterIndex, Transition } from '../../domain/master';
-import type { Delta, GuaranteeMode, PlannedCost } from '../../domain/model';
+import type { Delta, GuaranteeMode, PlannedCost, RecipeSnapshot } from '../../domain/model';
 import type { ConsumedItem } from '../../domain/planning/types';
 import { buildDeltas, type ConsumptionInput } from '../../domain/results/results';
 
@@ -126,11 +126,10 @@ export function consumedDeltas(deltas: Delta[], transition: Transition, outcome:
 export function valuesFromDeltas(deltas: Delta[], transition: Transition, outcome: string): { values: Record<string, string>; stars: Record<string, number> } {
   const values: Record<string, string> = {};
   const stars: Record<string, number> = {};
-  for (const d of deltas) {
+  // 成功では改修対象そのものの★変化（入力−1・出力＋1）を消費の値にしない
+  for (const d of consumedDeltas(deltas, transition, outcome)) {
     if (d.amount >= 0) continue;
     if (d.scope === 'equipment') {
-      const isTarget = outcome === 'success' && d.amount === -1 && d.equipmentId === transition.equipmentId && d.star === (transition.kind === 'improve' ? transition.fromStar : 10);
-      if (isTarget) continue;
       const key = equipmentRowKey(d.equipmentId, d.star);
       values[key] = String((Number(values[key] ?? 0) || 0) - d.amount);
       stars[key] = d.star;
@@ -179,7 +178,9 @@ export function deltasFromForm(form: RecordForm, rows: ConsumptionRow[], transit
   }
   const outcome = form.outcome === 'success' || form.outcome === 'failure' || form.outcome === 'skip' ? form.outcome : 'failure';
   const deltas = form.outcome === 'voided' ? [] : buildDeltas({ transition, outcome, consumption });
-  const known = buildDeltas({ transition, outcome: 'failure', consumption });
+  // 確認待ちで確保する既知の消費。成功と報告した場合は改修対象の入力★も確保し（他の目標・素材に使わせない）、出力★は確定まで増やさない
+  const consumed = buildDeltas({ transition, outcome: 'failure', consumption });
+  const known = form.outcome === 'success' ? [...buildDeltas({ transition, outcome: 'success', consumption: { resources: {}, equipment: [], useItems: {} } }).filter((d) => d.amount < 0), ...consumed] : consumed;
   return { deltas, known, unknownScopes: [...unknown], invalid };
 }
 
@@ -195,4 +196,9 @@ export function correctionEffect(input: { newDeltas: Delta[]; oldDeltas: Delta[]
   const from = sum(input.newDeltas, fromId, fromStar) - sum(input.oldDeltas, fromId, fromStar);
   const to = sum(input.newDeltas, toId, toStar) - sum(input.oldDeltas, toId, toStar);
   return from === 0 && to === 0 ? { kind: 'none' } : { kind: 'change', from, to };
+}
+
+/** 確認待ちを確定・更新するときのレシピ。下書きに保存した実施時の条件を優先し、なければ現在のマスターから作る */
+export function snapshotForDraft(drafts: readonly { draftId: string; recipeSnapshot: RecipeSnapshot | null }[], draftId: string | null, fresh: () => RecipeSnapshot): RecipeSnapshot {
+  return (draftId ? drafts.find((d) => d.draftId === draftId)?.recipeSnapshot : null) ?? fresh();
 }

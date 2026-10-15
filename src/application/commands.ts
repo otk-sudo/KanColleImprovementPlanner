@@ -119,6 +119,14 @@ export function handleSetProtection(data: AppData, p: ProtectionPayload): Handle
   if (p.resolve && p.snapshotId !== proj.equipment.snapshotId) {
     return fail('SNAPSHOT_CHANGED', '確認画面を開いた後に所持データが更新されました。最新の所持数で確認し直してください。');
   }
+  // 個体単位の所持では、保護する個体を個数ぶん重複なく、その装備・★の個体から選ぶ
+  const bucketInstances = proj.equipment.granularity === 'instance' ? (proj.equipment.instances ?? []).filter((i) => i.equipmentId === p.equipmentId && i.star === p.star).map((i) => i.instanceId) : [];
+  if (bucketInstances.length > 0 && p.count > 0) {
+    const ids = p.instanceIds ?? [];
+    if (ids.length !== p.count || new Set(ids).size !== ids.length || ids.some((id) => !bucketInstances.includes(id))) {
+      return fail('INVALID_PROTECTION_INSTANCES', '保護する個体を、保護数と同じ数だけ（同じ個体を重ねず）この装備・★の個体から選んでください。');
+    }
+  }
   const existing = data.protections.find((x) => x.bucket === key);
   if (p.count === 0 && (!existing || p.resolve || !existing.reconciliationRequired)) {
     return { ok: true, writes: existing ? { remove: { protections: [key] }, meta: { planDirty: true } } : { noChange: true }, result: null };
@@ -180,10 +188,10 @@ export interface RecordResultResult {
   cancelledSuccessors: string[];
 }
 
-/** 記録する実績の日内順（予定どおりの日なら予定の順番、別の日ならその日の記録の後ろ） */
-export function recordOrderFor(data: Pick<AppData, 'resultEvents'>, attempt: Attempt, occurredDateJst: DateJst): number {
-  if (attempt.scheduledDate === occurredDateJst) return attempt.dayOrder;
-  return data.resultEvents.filter((e) => e.occurredDateJst === occurredDateJst).length + 1;
+/** 記録する実績の日内順（予定どおりの日なら予定の順番、別の日ならその日の記録の最大の日内順の後ろ） */
+export function recordOrderFor(data: Pick<AppData, 'resultEvents'>, attempt: Attempt | null, occurredDateJst: DateJst): number {
+  if (attempt && attempt.scheduledDate === occurredDateJst) return attempt.dayOrder;
+  return data.resultEvents.filter((e) => e.occurredDateJst === occurredDateJst).reduce((max, e) => Math.max(max, e.occurredOrder), 0) + 1;
 }
 
 function seqOf(a: Attempt): number {
@@ -202,7 +210,8 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   if (!isValidDate(p.occurredDateJst) || compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には結果を記録できません。ゲームで実施した日を選んでください。');
   if (p.outcome === 'skip' && (attempt.scheduledDate !== p.today || p.occurredDateJst !== p.today)) return fail('SKIP_NOT_TODAY', 'スキップは当日の未実施の予定だけに記録できます。');
   if (p.outcome === 'skip' && p.deltas.length > 0) return fail('SKIP_HAS_CONSUMPTION', 'スキップでは資材・装備を消費しません。');
-  if (attempt.executionGate === 'predecessorPending' && p.outcome !== 'skip' && attempt.scheduledDate === p.today) return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程の結果は確定できません。');
+  // 下書きの確定は日付が変わっても前提待ちを確認する
+  if (attempt.executionGate === 'predecessorPending' && p.outcome !== 'skip' && (attempt.scheduledDate === p.today || p.fromDraftId !== null)) return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程の結果は確定できません。');
 
   const scopes = scopesOfDeltas(p.deltas);
   const fixed = fixedHistoryOnlyScopes({ originalSequence: data.meta.nextSequence, fromDraftId: p.fromDraftId }, scopes, data.baselines);
@@ -324,6 +333,8 @@ export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResu
   if (!attempt) return fail('ATTEMPT_NOT_FOUND', '対象の予定が見つかりません。');
   if (attempt.outcome !== 'none' && attempt.outcome !== 'draft') return fail('ALREADY_RECORDED', 'この予定には既に結果が記録されています。');
   if (compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には記録できません。');
+  // 前の工程の結果が確定していない予定は、実施済みとして消費を確保しない（記録画面と同じく日付によらず止める）
+  if (attempt.executionGate === 'predecessorPending') return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程を実施済みとして保存できません。');
   const existing = data.drafts.find((d) => d.attemptId === p.attemptId && d.status === 'open');
   const draft: DraftResult = {
     draftId: existing?.draftId ?? p.draftId,
@@ -375,7 +386,7 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const others = data.resultEvents.filter((x) => x.eventId !== e.eventId);
   // 実施日を変えたら、その日の記録の後ろ（予定どおりの日なら予定の順番）に日内順を付け直す
   const occurredOrder =
-    p.occurredDateJst === e.occurredDateJst ? e.occurredOrder : attempt ? recordOrderFor({ resultEvents: others }, attempt, p.occurredDateJst) : others.filter((x) => x.occurredDateJst === p.occurredDateJst).length + 1;
+    p.occurredDateJst === e.occurredDateJst ? e.occurredOrder : recordOrderFor({ resultEvents: others }, attempt ?? null, p.occurredDateJst);
   const check = validateCorrection({ event: e, newOutcome: p.newOutcome, newOccurredDate: p.occurredDateJst, newOccurredOrder: occurredOrder, events: data.resultEvents });
   if (!check.ok) {
     return fail(check.reason, check.reason === 'DEPENDENT_RESULTS' ? 'この記録の結果を使った後続の実績があります。後続の記録から先に修正してください。' : '後続の実績より後の日付には変更できません。', {

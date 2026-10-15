@@ -21,7 +21,10 @@ export interface EquipmentRow {
 export function equipmentRows(projection: InventoryProjection, plan: PlanResult | null): EquipmentRow[] {
   const usage = new Map<string, BucketUsage>((plan?.buckets ?? []).map((b) => [`${b.equipmentId}:${b.star}`, b]));
   const rows: EquipmentRow[] = [];
-  for (const [key, count] of projection.equipment.counts) {
+  // 所持のある★に加え、保護を指定した★（所持0）も行にする（保護の確認・削除ができるように）
+  const keys = [...projection.equipment.counts.keys(), ...[...usage.keys()].filter((k) => !projection.equipment.counts.has(k) && (usage.get(k)!.protectionRequested > 0 || usage.get(k)!.reconciliationRequired))];
+  for (const key of keys) {
+    const count = projection.equipment.counts.get(key) ?? 0;
     const [id, star] = key.split(':').map(Number) as [number, number];
     const u = usage.get(key);
     rows.push({

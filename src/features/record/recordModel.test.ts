@@ -5,7 +5,7 @@ import { buildMasterIndex } from '../../domain/master';
 import { FX, fixtureMaster } from '../../test-support/fixtureMaster';
 import { baselinesFrom } from '../../test-support/planFixtures';
 import type { PlannedCost } from '../../domain/model';
-import { consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 
 const eq = (equipmentId: number, star: number, amount: number): Delta => ({ scope: 'equipment', equipmentId, star, amount });
 
@@ -94,5 +94,40 @@ describe('記録・訂正で表示する所持数の変化', () => {
   it('P50：取り込み済みの基準に含まれる記録の訂正は現在数を変えず、当時の数量は検証不能と示す', () => {
     const r = correctionEffect({ newDeltas: [], oldDeltas: [eq(1, 5, -1), eq(1, 6, 1)], fixedScopes: ['equipment'] }, 1, 5, 1, 6);
     expect(r).toEqual({ kind: 'historyOnly' });
+  });
+});
+
+describe('確認待ちの下書きの確保', () => {
+  const m = buildMasterIndex(fixtureMaster());
+  const t = { kind: 'improve' as const, equipmentId: FX.mainGunA, fromStar: 5, toStar: 6 };
+  const projection = projectInventory(baselinesFrom({ equipment: [[FX.mainGunA, 5, 1], [FX.materialA, 0, 2]], resources: { 7: 9, 8: 9 } }), [], []);
+  const planned: PlannedCost = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, devmats: 1, screws: 2, equipment: [{ equipmentId: FX.materialA, count: 2 }], useItems: [] };
+  const form = (outcome: 'success' | 'failure', values: Record<string, string>): RecordForm => ({ attemptId: 'a', mode: 'record', eventId: null, draftId: null, outcome, occurredDate: '2026-10-15', missedAfterImport: false, values, stars: {}, scopeAnswers: {}, reason: '', base: { datasetEpoch: 'e', expectedRevision: 0 } });
+
+  it('成功と報告した下書きは改修対象の入力★を確保し、出力★は確定まで増やさない', () => {
+    const rows = consumptionRows(m, planned, projection);
+    const known = deltasFromForm(form('success', { 'resource:8': '2' }), rows, t).known;
+    expect(known).toContainEqual(eq(FX.mainGunA, 5, -1));
+    expect(known.some((d) => d.scope === 'equipment' && d.equipmentId === FX.mainGunA && d.star === 6)).toBe(false);
+    // 失敗は★を変えないので改修対象を確保しない
+    expect(deltasFromForm(form('failure', { 'resource:8': '2' }), rows, t).known.some((d) => d.scope === 'equipment' && d.equipmentId === FX.mainGunA)).toBe(false);
+  });
+
+  it('下書きを再開するとき、成功の改修対象の確保は消費の行・値に出さない', () => {
+    const known = [eq(FX.mainGunA, 5, -1), eq(FX.materialA, 0, -1), { scope: 'resource:8' as const, amount: -2 }];
+    const rows = consumptionRows(m, planned, projection, consumedDeltas(known, t, 'success'));
+    expect(rows.filter((r) => r.kind === 'equipment').map((r) => r.id)).toEqual([FX.materialA]);
+    expect(valuesFromDeltas(known, t, 'success').values).toEqual({ [`equipment:${FX.materialA}:0`]: '1', 'resource:8': '2' });
+  });
+});
+
+describe('確認待ちを確定するときのレシピの記録', () => {
+  it('下書きに保存したレシピ（実施時の条件）を使い、なければ現在のマスターから作る', () => {
+    const stored = { masterVersion: 'old', transition: { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 }, fromName: '旧名', toName: '旧名', mode: 'normal' as const, entryIndex: 0, plannedCost: null, helperShipId: 101, helperShipName: '旧艦' };
+    const fresh = { ...stored, masterVersion: 'new', fromName: '新名', toName: '新名', helperShipName: '新艦' };
+    const drafts = [{ draftId: 'd', recipeSnapshot: stored }, { draftId: 'e', recipeSnapshot: null }];
+    expect(snapshotForDraft(drafts, 'd', () => fresh)).toBe(stored);
+    expect(snapshotForDraft(drafts, 'e', () => fresh)).toBe(fresh);
+    expect(snapshotForDraft(drafts, null, () => fresh)).toBe(fresh);
   });
 });

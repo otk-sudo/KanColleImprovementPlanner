@@ -8,6 +8,7 @@ import { applyImport, buildImportPreview, previewSourceByScope, protectionChange
 import { parseImportText } from './parse';
 
 const m = buildMasterIndex(fixtureMaster());
+const wrapSlot = (rows: unknown[]) => `svdata=${JSON.stringify({ api_result: 1, api_data: rows })}`;
 
 function parsed(text: string, opts = {}) {
   const r = parseImportText(text, opts);
@@ -61,6 +62,16 @@ describe('取り込みのプレビュー', () => {
   it('マスターにない装備IDは警告し、名称を推測しない', () => {
     const p = buildImportPreview([parsed('[{"id":99999,"lv":0}]')], {}, projectInventory([], [], []), [], [], m);
     expect(p.unknownIds.equipment).toEqual([99999]);
+  });
+
+  it('保護した個体が別の★へ移ったら、同じ★に別の個体が残っていても保護の確認が必要と表示する', () => {
+    const prot: Protection = { bucket: `${FX.mainGunA}:0`, equipmentId: FX.mainGunA, star: 0, count: 1, instanceIds: [7], reason: '', reconciliationRequired: false, reconciliationSnapshotId: null, previousOwned: null, updatedAt: '' };
+    const moved = parsed(wrapSlot([{ api_id: 7, api_slotitem_id: FX.mainGunA, api_level: 1 }, { api_id: 8, api_slotitem_id: FX.mainGunA, api_level: 0 }]));
+    const p = buildImportPreview([moved], {}, projectInventory([], [], []), [], [prot], m);
+    expect(p.protectionIssues.map((i) => [i.bucket, i.reason])).toEqual([[`${FX.mainGunA}:0`, 'INSTANCE_MISSING']]);
+    // 同じ★のままなら確認不要
+    const same = parsed(wrapSlot([{ api_id: 7, api_slotitem_id: FX.mainGunA, api_level: 0 }]));
+    expect(buildImportPreview([same], {}, projectInventory([], [], []), [], [prot], m).protectionIssues).toEqual([]);
   });
 
   it('最新所持が手動保護を下回ると保護の確認が必要と表示する', () => {

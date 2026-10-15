@@ -20,6 +20,7 @@ import {
   handleSaveGoal,
   handleSaveSettings,
   handleSetProtection,
+  recordOrderFor,
   type RecordResultPayload,
 } from './commands';
 import { parseBackup } from '../domain/backup';
@@ -452,6 +453,17 @@ describe('レビュー指摘（PR #1）', () => {
     if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('SUCCESSOR_HAS_RESULT');
   });
 
+  it('前の工程の結果が確定していない予定は、確認待ちとしても保存しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const data = { ...d0, attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, executionGate: 'predecessorPending' as const } : x)) };
+    const r = handleSaveDraft(data, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'success', knownConsumptions: [], unknownScopes: ['resource:8'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('PREDECESSOR_PENDING');
+  });
+
   it('消費を訂正すると入力元を推定し直す（製作品の消費をなくせば製作の実績を拘束せず、加えれば入力元にする）', async () => {
     const s = await service();
     await seedPlan(s);
@@ -471,6 +483,15 @@ describe('レビュー指摘（PR #1）', () => {
     const early = handleCorrectResult(data, { ...payload, newDeltas: consumes, occurredDateJst: '2026-10-12' });
     expect(early.ok).toBe(false);
     if (!early.ok) expect(early.errors[0]?.code).toBe('ORDER_VIOLATION');
+  });
+
+  it('予定と別の日に記録すると、その日の記録の最大の日内順の後ろに置く（件数ではなく最大値）', () => {
+    const at = (order: number): ResultEvent => ({ eventId: `e${order}`, attemptId: 'x', stepKey: 'x', goalId: 'g', originalSequence: order, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: '2026-10-13', occurredOrder: order, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });
+    const a = { attemptId: 'a@1', stepKey: 'a', goalId: 'g', transition: { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 }, scheduledDate: '2026-10-14', dayOrder: 1, outcome: 'none' as const, lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: null, cancelReason: null };
+    expect(recordOrderFor({ resultEvents: [at(5)] }, a, '2026-10-13')).toBe(6);
+    expect(recordOrderFor({ resultEvents: [at(1), at(3)] }, a, '2026-10-13')).toBe(4);
+    expect(recordOrderFor({ resultEvents: [] }, a, '2026-10-13')).toBe(1);
+    expect(recordOrderFor({ resultEvents: [at(5)] }, a, '2026-10-14')).toBe(1);
   });
 
   it('訂正で実施日を変えると、その日の記録の後ろに日内順を付け直す', async () => {
@@ -500,6 +521,20 @@ describe('レビュー指摘（PR #1）', () => {
 });
 
 describe('保護・復元', () => {
+  it('個体単位の所持では、保護する個体を個数ぶん重複なく、その装備・★の個体から選ばないと保存しない', async () => {
+    const s = await service();
+    const slot = (rows: [number, number, number][]) => `svdata=${JSON.stringify({ api_result: 1, api_data: rows.map(([id, eq, lv]) => ({ api_id: id, api_slotitem_id: eq, api_level: lv })) })}`;
+    await importText(s, slot([[1, FX.mainGunA, 6], [2, FX.mainGunA, 6], [3, FX.mainGunA, 5]]));
+    const d = await s.load();
+    const set = (count: number, instanceIds: number[] | null) => handleSetProtection(d, { equipmentId: FX.mainGunA, star: 6, count, instanceIds, reason: '', resolve: false, snapshotId: null, now: '' });
+    expect(set(2, [1]).ok).toBe(false); // 個数と選んだ個体の数が違う
+    expect(set(2, [1, 1]).ok).toBe(false); // 重複
+    expect(set(2, [1, 3]).ok).toBe(false); // 別の★の個体
+    expect(set(2, null).ok).toBe(false); // 個体を選んでいない
+    expect(set(2, [1, 2]).ok).toBe(true);
+    expect(set(0, []).ok).toBe(true);
+  });
+
   it('P54：確認画面を開いた後に別タブで所持が更新されたら旧所持に対する確定を拒否する', async () => {
     const s = await service();
     await importText(s, `[{"id":${FX.mainGunA},"lv":6},{"id":${FX.mainGunA},"lv":6}]`);

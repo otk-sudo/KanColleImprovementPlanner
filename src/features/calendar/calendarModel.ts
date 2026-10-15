@@ -1,8 +1,8 @@
 import { compareDate, type DateJst, weekdayOf } from '../../domain/jst';
-import type { Transition } from '../../domain/master';
+import { transitionTo, type Transition } from '../../domain/master';
 import type { Attempt, ResultEvent, Settings } from '../../domain/model';
-import type { Placement, PlanResult } from '../../domain/planning/types';
-import { attemptSeq } from '../../domain/planning/plan';
+import type { CostKey, Placement, PlanResult } from '../../domain/planning/types';
+import { attemptSeq, costItems } from '../../domain/planning/plan';
 import { holidaySet } from '../../domain/planning/schedule';
 import type { AppData } from '../../infrastructure/repository';
 
@@ -125,4 +125,46 @@ export const KIND_LABEL: Record<EntryKind, string> = {
 /** 工程の最新の試行（番号の数値が最大のもの） */
 export function latestAttemptOf(attempts: Attempt[], stepKey: string): Attempt | undefined {
   return attempts.filter((a) => a.stepKey === stepKey).sort((a, b) => attemptSeq(a) - attemptSeq(b)).at(-1);
+}
+
+/** その日の実施前の見込み在庫（前日までの予定消費と保護指定を考慮） */
+export function dayRequirements(plan: PlanResult | null, date: DateJst): { key: CostKey; need: number; available: number | null }[] {
+  if (!plan) return [];
+  const before = new Map<CostKey, number>();
+  const day = new Map<CostKey, number>();
+  for (const p of plan.placements) {
+    if (!p.date || !p.cost) continue;
+    const cmp = compareDate(p.date, date);
+    if (cmp > 0) continue;
+    for (const c of costItems(p.cost, p.mode)) (cmp < 0 ? before : day).set(c.key, ((cmp < 0 ? before : day).get(c.key) ?? 0) + c.amount);
+  }
+  // 素材の製作品は、その日までに製作する分だけ見込み在庫に加える（後日の製作品を前倒しで数えない）
+  const stepByKey = new Map(plan.steps.map((s) => [s.stepKey, s]));
+  const produced = new Map<CostKey, number>();
+  for (const p of plan.placements) {
+    if (!p.date || compareDate(p.date, date) > 0) continue;
+    const s = stepByKey.get(p.stepKey);
+    if (!s || s.role !== 'craft' || s.craftFor === null || transitionTo(s.transition).equipmentId !== s.craftFor) continue;
+    const key: CostKey = `equipment:${s.craftFor}`;
+    produced.set(key, (produced.get(key) ?? 0) + 1);
+  }
+  const avail = new Map(plan.totals.map((t) => [t.key, t.available === null ? null : t.available + (produced.get(t.key) ?? 0)]));
+  const rank = (k: CostKey) => (k === 'resource:8' ? 0 : k === 'resource:7' ? 1 : k.startsWith('equipment:') ? 2 : k.startsWith('item:') ? 3 : 4);
+  return [...day.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([key, need]) => {
+    const a = avail.get(key);
+    return { key, need, available: a === null || a === undefined ? null : Math.max(0, a - (before.get(key) ?? 0)) };
+  });
+}
+
+/** 装備が進む（または進む予定の）種類。失敗・スキップ・確認待ち・要確認は★を変えない */
+const PROGRESS_KINDS: ReadonlySet<EntryKind> = new Set<EntryKind>(['success', 'planned', 'tentative', 'provisional', 'pending']);
+
+/** 月表示のセルの「n回 / ★+k・更新m」。回数は繰り越した試行を除く全件、★と更新は進みのある件だけ */
+export function monthCellSummary(entries: DayEntry[]): string {
+  const visible = entries.filter((e) => e.kind !== 'superseded');
+  const progress = visible.filter((e) => PROGRESS_KINDS.has(e.kind));
+  const improves = progress.filter((e) => e.transition.kind === 'improve').length;
+  const converts = progress.length - improves;
+  const parts = [improves > 0 ? `★+${improves}` : '', converts > 0 ? `更新${converts}` : ''].filter((x) => x !== '');
+  return parts.length > 0 ? `${visible.length}回 / ${parts.join('・')}` : `${visible.length}回`;
 }

@@ -35,9 +35,25 @@ export interface GoalAllocation {
 
 const add = (m: Map<string, number>, k: string, n: number) => m.set(k, (m.get(k) ?? 0) + n);
 
-export function createPool(inv: InventoryProjection, protections: Protection[]): Pool {
+/** 確認待ちの下書き（成功と報告）の改修対象。その目標の改修対象として先に割り当てる */
+export interface ReservedTarget {
+  goalId: string;
+  equipmentId: number;
+  star: number;
+}
+
+/**
+ * 計画に使う装備の在庫。確認待ちの下書きが確保した装備（消費候補）は除く。
+ * ただし成功と報告した下書きの改修対象（reserved）は、その目標へ割り当てるため在庫に残す。
+ */
+export function createPool(inv: InventoryProjection, protections: Protection[], reserved: ReservedTarget[] = []): Pool {
+  const keep = new Map<string, number>();
+  for (const r of reserved) add(keep, bucketKey(r.equipmentId, r.star), 1);
   const owned = new Map<string, number>();
-  for (const [k, v] of inv.equipment.counts) if (v > 0) owned.set(k, v);
+  for (const [k, v] of inv.equipment.counts) {
+    const held = Math.max(0, (inv.holds.get(`equipment:${k}`) ?? 0) - (keep.get(k) ?? 0));
+    if (v - held > 0) owned.set(k, v - held);
+  }
   const manual = new Map<string, number>();
   const manualRequested = new Map<string, number>();
   const reconciliation = new Set<string>();
@@ -81,12 +97,19 @@ export function stepsToEnd(m: MasterIndex, routeIds: number[], index: number, st
   return n;
 }
 
-export function allocateGoals(m: MasterIndex, pool: Pool, goals: Goal[]): GoalAllocation[] {
+export function allocateGoals(m: MasterIndex, pool: Pool, goals: Goal[], reserved: ReservedTarget[] = []): GoalAllocation[] {
   const allocs = new Map<string, GoalAllocation>();
   for (const g of goals) {
     const routeIds = g.routeKey ? parseRouteKey(g.routeKey) : [g.equipmentId];
     const routeValid = routeIds[routeIds.length - 1] === g.equipmentId && validRoute(m, routeIds);
     allocs.set(g.goalId, { goal: g, routeIds, routeValid, completedBuckets: [], targets: [], missing: 0, protectionBlocked: false });
+  }
+
+  // 0. 成功と報告した確認待ちの改修対象：完成品・他の目標・素材より先に、その目標の改修対象として確保する
+  for (const r of reserved) {
+    const t = take(pool, bucketKey(r.equipmentId, r.star), 1, pool.targetUse);
+    const alloc = allocs.get(r.goalId);
+    if (t > 0 && alloc && alloc.routeValid) alloc.targets.push({ equipmentId: r.equipmentId, star: r.star });
   }
 
   // 1. 完成品：完全一致を先に、次に★以上を目標★の高い順。条件を満たす最小の★から配る
@@ -112,7 +135,7 @@ export function allocateGoals(m: MasterIndex, pool: Pool, goals: Goal[]): GoalAl
   for (const g of [...goals].sort(goalOrder)) {
     const alloc = allocs.get(g.goalId)!;
     const completed = alloc.completedBuckets.reduce((n, b) => n + b.count, 0);
-    let need = g.count - completed;
+    let need = g.count - completed - alloc.targets.length;
     if (need <= 0 || !alloc.routeValid) {
       alloc.missing = Math.max(0, need);
       continue;

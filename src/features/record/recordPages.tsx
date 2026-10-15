@@ -6,13 +6,13 @@ import { handleCorrectResult, handleRecordResult, handleSaveDraft, recordOrderFo
 import { projectInventory } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
 import { compareDate, formatMonthDayWeek, formatJstMonthDayTime, isValidDate, parseDate, type DateJst } from '../../domain/jst';
-import { transitionOptions, transitionTo, transitionFrom } from '../../domain/master';
+import { transitionOptions, transitionTo, transitionFrom, type Transition } from '../../domain/master';
 import type { Attempt, Delta, RecipeSnapshot, ResultEvent } from '../../domain/model';
 import { fixedHistoryOnlyScopes, inferInputSources, scopesOfDeltas, wouldGoNegative } from '../../domain/results/results';
 import { newId, type AppData } from '../../infrastructure/repository';
 import { costKeyPlain, recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import { DateBox } from '../../ui/SelectBox';
-import { allocationFrom, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { allocationFrom, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 import './record.css';
 
 // 改修結果の記録（S13）・実施済み確認待ち（S28）・過去実績の scope 確認（S34）。design/10・12、ui-design-v1 第4巡・第12巡。
@@ -41,8 +41,10 @@ function useConsumptionRows(ctx: ReturnType<typeof useAttemptContext>, extra: De
   return useMemo(() => consumptionRows(master, ctx.planned, projection, extra, allocationFrom(placement?.consumption)), [master, ctx.planned, projection, extra, placement]);
 }
 
-function draftConsumptions(data: AppData, draftId: string | null): Delta[] {
-  return (draftId ? data.drafts.find((d) => d.draftId === draftId)?.knownConsumptions : undefined) ?? NO_DELTAS;
+/** 下書きが確保した消費のうち、消費の行にするもの（成功と報告した改修対象の確保は除く） */
+function draftConsumptions(data: AppData, draftId: string | null, transition: Transition | undefined): Delta[] {
+  const d = draftId ? data.drafts.find((x) => x.draftId === draftId) : undefined;
+  return d && transition ? consumedDeltas(d.knownConsumptions, transition, d.reportedOutcome) : NO_DELTAS;
 }
 
 const NO_DELTAS: Delta[] = [];
@@ -95,12 +97,12 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const { attempt } = ctx;
   const cached = formCache.get(formKey(attemptId)) as RecordForm | undefined;
   // 訂正では改修対象そのものの★変化を消費の行にしない。確定済みの記録は消費0の行も 0 として復元する
-  const extra = useMemo(() => (event && attempt ? consumedDeltas(event.deltas, attempt.transition, event.outcome) : (draft?.knownConsumptions ?? NO_DELTAS)), [event, draft, attempt]);
+  const extra = useMemo(() => (event && attempt ? consumedDeltas(event.deltas, attempt.transition, event.outcome) : draft && attempt ? consumedDeltas(draft.knownConsumptions, attempt.transition, draft.reportedOutcome) : NO_DELTAS), [event, draft, attempt]);
   const rows = useConsumptionRows(ctx, extra);
   const [form, setForm] = useState<RecordForm | null>(() => {
     if (!attempt) return null;
     if (cached && cached.mode === mode) return cached;
-    const dv = draft ? valuesFromDeltas(draft.knownConsumptions, attempt.transition, 'failure') : null;
+    const dv = draft ? valuesFromDeltas(draft.knownConsumptions, attempt.transition, draft.reportedOutcome) : null;
     const ev = event ? savedValues(event.deltas, attempt.transition, event.outcome, rows) : null;
     const f = initialForm(attempt, today, mode, event, ev, dv, draft?.draftId ?? null, baseOf(data));
     if (draft) return { ...f, outcome: draft.reportedOutcome, occurredDate: draft.occurredDateJst, scopeAnswers: draft.scopeAnswers };
@@ -204,7 +206,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
         requireScopeAnswers: false,
         answeredScopes: [],
         eventId,
-        recipeSnapshot: recipeSnapshotFor(master, attempt, ctx),
+        recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
         now: new Date().toISOString(),
@@ -336,7 +338,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
               キャンセル
             </Link>
             {mode !== 'correct' && form.outcome !== 'skip' ? (
-              <button type="button" className="btn" style={{ width: 260 }} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
+              <button type="button" className="btn" style={{ width: 260 }} disabled={attempt.executionGate === 'predecessorPending'} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
                 実施済み・確認待ち
               </button>
             ) : (
@@ -403,7 +405,7 @@ export function DraftConfirmPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [draftId] = useState(() => form?.draftId ?? newId('draft'));
   const commandId = useCommandId(attemptId, checked);
-  const rows = useConsumptionRows(ctx, draftConsumptions(data, form?.draftId ?? null));
+  const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, form?.draftId ?? null, ctx.attempt?.transition), [data, form?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !form || (form.outcome !== 'success' && form.outcome !== 'failure')) {
     return (
       <Page nav="history" title="実施済み・消費確認待ち" top={196}>
@@ -422,7 +424,7 @@ export function DraftConfirmPage() {
     const res = await run(
       'SaveDraftResult',
       handleSaveDraft,
-      { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: recipeSnapshotFor(master, attempt, ctx), now: new Date().toISOString() },
+      { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)), now: new Date().toISOString() },
       { commandId, base: form.base },
     );
     if (!res.ok) {
@@ -519,7 +521,7 @@ export function PastRecordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [eventId] = useState(() => newId('ev'));
   const commandId = useCommandId(attemptId, answers);
-  const rows = useConsumptionRows(ctx, draftConsumptions(data, cached?.draftId ?? null));
+  const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, cached?.draftId ?? null, ctx.attempt?.transition), [data, cached?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !cached || (cached.outcome !== 'success' && cached.outcome !== 'failure')) {
     return (
       <Page nav="history" title="過去の実績と所持数への反映" top={196}>
@@ -584,7 +586,7 @@ export function PastRecordPage() {
         requireScopeAnswers: true,
         answeredScopes: scopes.filter((s) => answers[s]),
         eventId,
-        recipeSnapshot: recipeSnapshotFor(master, attempt, ctx),
+        recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
         now: new Date().toISOString(),
@@ -675,7 +677,7 @@ export function PastRecordPage() {
         <Link className="btn" to={`/attempts/${encodeURIComponent(attemptId)}/record`} style={{ width: 200 }}>
           入力へ戻る
         </Link>
-        <button type="button" className="btn" style={{ width: 300 }} onClick={toDraft}>
+        <button type="button" className="btn" style={{ width: 300 }} disabled={attempt.executionGate === 'predecessorPending'} onClick={toDraft}>
           実施済み・確認待ちへ
         </button>
         <span className="spacer" />

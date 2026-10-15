@@ -147,6 +147,11 @@ export function ImportFilePage() {
   };
 
   const failed = session?.inputs.filter((i) => !i.result.ok && !i.excluded) ?? [];
+  /** 複数ファイルのうち1件を明示的に除外する（または戻す）。採用の選択は入力の並びが変わるので選び直す */
+  const toggleExcluded = (index: number) => {
+    if (!session) return;
+    setImportSession({ ...session, inputs: session.inputs.map((x, j) => (j === index ? { ...x, excluded: !x.excluded } : x)), selection: {}, commandId: newId('cmd') });
+  };
   const first = session?.inputs.find((i) => i.result.ok && !i.excluded);
   const canConfirm = !!preview && preview.conflicts.length === 0 && failed.length === 0 && session !== null && session.inputs.some((i) => i.result.ok && !i.excluded);
 
@@ -195,8 +200,13 @@ export function ImportFilePage() {
         ) : (
           <>
             {session.inputs.map((input, i) => (
-              <p key={i} className={`import-file-line ${input.result.ok ? 'text-ok' : 'text-error'}`}>
-                {input.result.ok ? (
+              <p key={i} className={`import-file-line ${input.excluded ? 'text-sub' : input.result.ok ? 'text-ok' : 'text-error'}`}>
+                {input.excluded ? (
+                  <>
+                    <span>{input.name}</span>
+                    <span>除外しました（反映しません）</span>
+                  </>
+                ) : input.result.ok ? (
                   <>
                     <span>{fileKindTitle(input.result.value.kind)}</span>
                     <span>
@@ -210,6 +220,11 @@ export function ImportFilePage() {
                     <span>読み込めません：{input.result.error.message}</span>
                   </>
                 )}
+                {session.inputs.length > 1 ? (
+                  <button type="button" className="link-button" aria-label={`${input.name} を${input.excluded ? '戻す' : '除外'}`} onClick={() => toggleExcluded(i)}>
+                    {input.excluded ? '戻す' : '除外'}
+                  </button>
+                ) : null}
               </p>
             ))}
             {preview && first?.result.ok ? <p className="import-file-values">{previewLine(preview, master) || summarizeEquipShips(preview)}</p> : null}

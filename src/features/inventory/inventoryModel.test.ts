@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { buildMasterIndex } from '../../domain/master';
 import { FX, fixtureMaster } from '../../test-support/fixtureMaster';
 import { projectInventory } from '../../domain/inventory/projection';
-import { baselinesFrom, goal } from '../../test-support/planFixtures';
-import { helperRows, requiredLabel, stageName } from './inventoryModel';
+import { baselinesFrom, goal, planInput } from '../../test-support/planFixtures';
+import { buildPlan } from '../../domain/planning/plan';
+import { equipmentRows, helperRows, requiredLabel, stageName } from './inventoryModel';
 
 describe('改造段階名（S16・S05）', () => {
   const m = buildMasterIndex(fixtureMaster());
@@ -45,5 +46,16 @@ describe('目標に関係する担当艦（S16）', () => {
     ]);
     expect(requiredLabel(m, rows[1]!)).toBe('! 改二が必要');
     expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+  });
+});
+
+describe('装備一覧（S17）', () => {
+  it('取り込みで所持が0になった保護対象の★も、保護の確認が必要な行として残す', () => {
+    const prot = { bucket: `${FX.mainGunA}:6`, equipmentId: FX.mainGunA, star: 6, count: 1, instanceIds: null, reason: '', reconciliationRequired: true, reconciliationSnapshotId: 's', previousOwned: 1, updatedAt: '' };
+    const input = planInput({ inventory: { equipment: [[FX.mainGunA, 5, 1]], ships: [], resources: {} }, goals: [], protections: [prot] });
+    const rows = equipmentRows(input.inventory, buildPlan(input));
+    const zero = rows.find((r) => r.key === `${FX.mainGunA}:6`);
+    expect(zero).toMatchObject({ owned: 0, reconciliationRequired: true, protectionRequested: 1 });
+    expect(rows.find((r) => r.key === `${FX.mainGunA}:5`)?.owned).toBe(1);
   });
 });

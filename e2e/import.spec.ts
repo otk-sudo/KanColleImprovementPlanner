@@ -70,6 +70,25 @@ test('A02：74式ENの保存ファイル（svdata= 付き）を選んで取り�
   expect(d.baselines.find((b) => b.scope === 'resource:7')?.value).toBe(33);
 });
 
+test('A02：複数ファイルに読めないファイルがあれば確定せず、そのファイルを明示的に除外すれば残りだけ反映できる', async ({ page }) => {
+  await start(page, { route: '/import/file' });
+  const body = `svdata=${JSON.stringify({ api_result: 1, api_result_msg: '成功', api_data: [{ api_member_id: 1, api_id: 8, api_value: 22 }] })}`;
+  await page.locator('input[type=file]').setInputFiles([
+    { name: '20261014_093000_S@api_get_member@material.json', mimeType: 'application/json', buffer: Buffer.from(body, 'utf8') },
+    { name: '20261014_093001_S@api_get_member@slot_item.json', mimeType: 'application/json', buffer: Buffer.from('svdata={"api_result":1,', 'utf8') },
+  ]);
+  await expect(page.getByText(/読み込めません/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '反映内容を確認' })).toBeDisabled();
+  await page.getByRole('button', { name: /slot_item\.json を除外/ }).click();
+  await expect(page.getByText(/除外しました/)).toBeVisible();
+  await page.getByRole('button', { name: '反映内容を確認' }).click();
+  await page.getByRole('button', { name: '最新の所持データとして反映' }).click();
+  await page.waitForURL(/#\/inventory\/items/);
+  const d = await state(page);
+  expect(d.baselines.find((b) => b.scope === 'resource:8')?.value).toBe(22);
+  expect(d.baselines.some((b) => b.scope === 'equipment')).toBe(false);
+});
+
 test('認証情報やリクエストは受け付けず、レスポンス本文だけを扱う（A02）', async ({ page }) => {
   await start(page, { route: '/import' });
   await page.getByLabel('コピーしたレスポンス').fill('api_token=abcdef&api_verno=1');

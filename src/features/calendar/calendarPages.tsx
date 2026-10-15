@@ -6,14 +6,12 @@ import { handleRecordResult, handleSkipDate, handleSameDayRetry } from '../../ap
 import { addDays, compareDate, formatMonthDayWeek, formatSlashDate, isValidDate, monthGrid, parseDate, weekStartMonday, type DateJst } from '../../domain/jst';
 import type { Placement, PlanResult, UnplacedReason } from '../../domain/planning/types';
 import { UNPLACED_REASON_LABELS } from '../../domain/planning/types';
-import { costItems } from '../../domain/planning/plan';
-import type { CostKey } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { newId } from '../../infrastructure/repository';
 import { costKeyLabel, costKeyPlain, costSummary, costSummaryTight, transitionLabel, transitionShort } from '../../ui/format';
 import { transitionOptions, type AttemptCost } from '../../domain/master';
 import { WelcomeContent } from '../onboarding/WelcomePage';
-import { buildDays, emptyDay, KIND_LABEL, latestAttemptOf, type DayEntry, type DayInfo } from './calendarModel';
+import { buildDays, dayRequirements, emptyDay, KIND_LABEL, latestAttemptOf, monthCellSummary, type DayEntry, type DayInfo } from './calendarModel';
 import './calendar.css';
 
 // カレンダー（S01 月・S02 週・S18 日付指定・S24 個別スキップ・S25 日全体スキップ・S30 前提待ち）。
@@ -37,25 +35,6 @@ function unplacedSummary(plan: PlanResult | null): { total: number; parts: strin
   }
   const short: Partial<Record<UnplacedReason, string>> = { HELPER_MISSING: '担当艦未所持', RECIPE_UNKNOWN: '条件未確認', REMODEL_MISMATCH: '改造段階不足', HELPER_UNKNOWN: '艦娘データ未取得', TARGET_MISSING: '対象未所持' };
   return { total: plan?.unplaced.length ?? 0, parts: [...counts.entries()].map(([r, n]) => `${short[r] ?? UNPLACED_REASON_LABELS[r]} ${n}件`) };
-}
-
-/** その日の実施前の見込み在庫（前日までの予定消費と保護指定を考慮） */
-export function dayRequirements(plan: PlanResult | null, date: DateJst): { key: CostKey; need: number; available: number | null }[] {
-  if (!plan) return [];
-  const before = new Map<CostKey, number>();
-  const day = new Map<CostKey, number>();
-  for (const p of plan.placements) {
-    if (!p.date || !p.cost) continue;
-    const cmp = compareDate(p.date, date);
-    if (cmp > 0) continue;
-    for (const c of costItems(p.cost, p.mode)) (cmp < 0 ? before : day).set(c.key, ((cmp < 0 ? before : day).get(c.key) ?? 0) + c.amount);
-  }
-  const avail = new Map(plan.totals.map((t) => [t.key, t.available === null ? null : t.available + (t.key.startsWith('equipment:') ? t.planned : 0)]));
-  const rank = (k: CostKey) => (k === 'resource:8' ? 0 : k === 'resource:7' ? 1 : k.startsWith('equipment:') ? 2 : k.startsWith('item:') ? 3 : 4);
-  return [...day.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([key, need]) => {
-    const a = avail.get(key);
-    return { key, need, available: a === null || a === undefined ? null : Math.max(0, a - (before.get(key) ?? 0)) };
-  });
 }
 
 export function CalendarPage() {
@@ -162,8 +141,6 @@ function MonthCell({ info, selected, today, onSelect }: { info: DayInfo; selecte
   const visible = info.entries.filter((e) => e.kind !== 'superseded');
   const main = visible[0];
   const tentative = visible.some((e) => e.kind === 'tentative' || e.kind === 'pending' || e.kind === 'review');
-  const improves = visible.filter((e) => e.transition.kind === 'improve').length;
-  const converts = visible.length - improves;
   const label = `${info.date}${info.holiday ? ' 休み' : ''} 予定${info.plannedCount}件 実施${info.doneCount}件${info.tentativeCount ? ` 仮配置${info.tentativeCount}件` : ''}`;
   return (
     <button type="button" role="gridcell" aria-selected={selected} aria-label={label} className={`cal-cell${today ? ' is-today' : ''}${selected ? ' is-selected' : ''}${info.holiday ? ' is-holiday' : ''}`} onClick={onSelect}>
@@ -174,10 +151,7 @@ function MonthCell({ info, selected, today, onSelect }: { info: DayInfo; selecte
             {tentative ? '仮  ' : ''}
             {master.equipmentName(main.transition.equipmentId)}
           </span>
-          <span className="cal-entry-sub">
-            {visible.length}回 / {improves > 0 ? `★+${improves}` : ''}
-            {converts > 0 ? `${improves > 0 ? '・' : ''}更新${converts}` : ''}
-          </span>
+          <span className="cal-entry-sub">{monthCellSummary(info.entries)}</span>
           {info.goalsCompleting.length > 0 ? <span className="cal-entry-goal">完了見込み</span> : visible.length > 1 && new Set(visible.map((v) => v.transition.equipmentId)).size > 1 ? <span className="cal-entry-goal text-sub">ほか{new Set(visible.map((v) => v.transition.equipmentId)).size - 1}件</span> : null}
         </>
       ) : info.holiday ? (

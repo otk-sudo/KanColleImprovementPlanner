@@ -25,6 +25,7 @@ export interface ProtectionIssue {
   previousOwned: number;
   newOwned: number;
   requested: number;
+  /** INSTANCE_MISSING：保護した個体が消えた、または別の装備・★へ移った */
   reason: 'COUNT_EXCEEDS' | 'GRANULARITY_CHANGED' | 'INSTANCE_MISSING';
 }
 
@@ -63,7 +64,8 @@ function updateValue(u: ScopeUpdate): { after: number; kinds: number | null } {
 
 function equipmentProtectionIssues(newUpdate: Extract<ScopeUpdate, { scope: 'equipment' }>, previousCounts: Map<string, number>, baseline: Baseline | undefined, protections: Protection[]): ProtectionIssue[] {
   const owned = new Map(newUpdate.buckets.map((b) => [bucketKey(b.equipmentId, b.star), b.count]));
-  const instanceIds = new Set((newUpdate.instances ?? []).map((i) => i.instanceId));
+  // 個体ID → 新しい所持での装備・★（保護した個体が同じ装備・★に残っているかを確かめる）
+  const instanceBucket = new Map((newUpdate.instances ?? []).map((i) => [i.instanceId, bucketKey(i.equipmentId, i.star)]));
   const granularityChanged = !!baseline?.equipment && baseline.equipment.granularity !== newUpdate.granularity;
   const issues: ProtectionIssue[] = [];
   for (const p of protections) {
@@ -72,7 +74,7 @@ function equipmentProtectionIssues(newUpdate: Extract<ScopeUpdate, { scope: 'equ
     const base = { bucket: p.bucket, equipmentId: p.equipmentId, star: p.star, previousOwned: previousCounts.get(p.bucket) ?? 0, newOwned, requested: p.count };
     if (p.count > newOwned) issues.push({ ...base, reason: 'COUNT_EXCEEDS' });
     else if (granularityChanged) issues.push({ ...base, reason: 'GRANULARITY_CHANGED' });
-    else if (p.instanceIds && p.instanceIds.some((id) => !instanceIds.has(id))) issues.push({ ...base, reason: 'INSTANCE_MISSING' });
+    else if (p.instanceIds && p.instanceIds.some((id) => instanceBucket.get(id) !== p.bucket)) issues.push({ ...base, reason: 'INSTANCE_MISSING' });
   }
   return issues;
 }

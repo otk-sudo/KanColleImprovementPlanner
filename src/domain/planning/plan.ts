@@ -5,6 +5,7 @@ import {
   conversionStar,
   enumerateRoutes,
   parseRouteKey,
+  transitionFrom,
   transitionKey,
   transitionOptions,
   type AttemptCost,
@@ -13,7 +14,7 @@ import {
   type TransitionOption,
 } from '../master';
 import type { Attempt, ExecutionGate, Goal, GuaranteeMode } from '../model';
-import { allocateGoals, createPool, goalOrder, materialAvailableAfterGoals, stepsToEnd, validRoute, type ChainStart, type GoalAllocation, type Pool } from './allocate';
+import { allocateGoals, createPool, goalOrder, materialAvailableAfterGoals, stepsToEnd, validRoute, type ChainStart, type GoalAllocation, type Pool, type ReservedTarget } from './allocate';
 import { helperInfo, type HelperInfo } from './helpers';
 import { schedule, type FixedSlot, type SchedStep } from './schedule';
 import type {
@@ -176,8 +177,22 @@ export function buildPlan(input: PlanInput): PlanResult {
   }
 
   // ---- 1. 完成品・改修対象の配分 ----
-  const pool: Pool = createPool(inv, input.protections);
-  const allocs: GoalAllocation[] = allocateGoals(m, pool, goals);
+  // 成功と報告した確認待ちの下書きが確保した改修対象（基準に取り込み済みの下書きは確保がないので除く）
+  const reserved: ReservedTarget[] = [];
+  const reservedCount = new Map<string, number>();
+  for (const d of input.drafts) {
+    if (d.status !== 'open' || d.reportedOutcome !== 'success') continue;
+    const a = input.attempts.find((x) => x.attemptId === d.attemptId);
+    if (!a) continue;
+    const from = transitionFrom(a.transition);
+    const k = bucketKey(from.equipmentId, from.star);
+    const declared = d.knownConsumptions.some((c) => c.scope === 'equipment' && c.equipmentId === from.equipmentId && c.star === from.star && c.amount < 0);
+    if (!declared || (inv.holds.get(`equipment:${k}`) ?? 0) <= (reservedCount.get(k) ?? 0)) continue;
+    reservedCount.set(k, (reservedCount.get(k) ?? 0) + 1);
+    reserved.push({ goalId: a.goalId, equipmentId: from.equipmentId, star: from.star });
+  }
+  const pool: Pool = createPool(inv, input.protections, reserved);
+  const allocs: GoalAllocation[] = allocateGoals(m, pool, goals, reserved);
   const allocById = new Map(allocs.map((a) => [a.goal.goalId, a]));
 
   // 素材として使える残り（bucket 単位）
@@ -270,6 +285,11 @@ export function buildPlan(input: PlanInput): PlanResult {
     const made: Chain[] = [];
     for (const c of candidates) {
       while (made.length < count && (material.get(c.key) ?? 0) > 0) {
+        // 上限に達したら、それ以上の製作の鎖は作らない（残りは計算上限として示す）
+        if (computationLimited) {
+          limitedCraftGoals.add(goal.goalId);
+          break;
+        }
         material.set(c.key, (material.get(c.key) ?? 0) - 1);
         pool.craftUse.set(c.key, (pool.craftUse.get(c.key) ?? 0) + 1);
         const start = { equipmentId: keyId(c.key), star: keyStar(c.key) };
@@ -280,7 +300,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         }
         made.push(chain);
       }
-      if (made.length >= count) break;
+      if (made.length >= count || computationLimited) break;
     }
     if (made.length > 0 && !computationLimited) processConsumers(goal, made, stack, depth);
     return made;
@@ -336,6 +356,7 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   // 上限に達したら、それ以上の改修対象の工程は展開せず、目標ごとの残り件数を計算上限として未配置にする
   const limitedTargets = new Map<string, number>();
+  const limitedCraftGoals = new Set<string>();
   for (const g of goals) {
     const alloc = allocById.get(g.goalId)!;
     const targetChains: Chain[] = [];
@@ -707,7 +728,8 @@ export function buildPlan(input: PlanInput): PlanResult {
   }
 
   for (const g of goals) {
-    const n = limitedTargets.get(g.goalId) ?? 0;
+    // 素材の製作だけが打ち切られた目標も、計算上限として1件示す
+    const n = limitedTargets.get(g.goalId) ?? (limitedCraftGoals.has(g.goalId) ? 1 : 0);
     for (let i = 0; i < n; i++) {
       unplaced.push({
         stepKey: `${g.goalId}|limit|${i}`,
@@ -810,7 +832,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     };
   });
 
-  const buckets: BucketUsage[] = [...pool.owned.keys()]
+  // 所持のある★と、保護を指定した★（取り込みで所持が0になっても確認できるように残す）
+  const buckets: BucketUsage[] = [...new Set([...pool.owned.keys(), ...pool.manualRequested.keys()])]
     .sort((a, b) => keyId(a) - keyId(b) || keyStar(b) - keyStar(a))
     .map((k) => {
       const owned = pool.owned.get(k) ?? 0;
