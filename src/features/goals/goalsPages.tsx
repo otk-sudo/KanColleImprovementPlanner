@@ -14,7 +14,7 @@ import { EquipmentImage, IMAGES_ENABLED } from '../../ui/GameImage';
 import { SelectBox } from '../../ui/SelectBox';
 import { costKeyPlain, costSummaryTight, transitionLabel } from '../../ui/format';
 import { stageName } from '../inventory/inventoryModel';
-import { goalPlanOf, goalStatus, goalTarget, goalTitle, isGoalDone } from './goalModel';
+import { goalPlanOf, goalStatus, goalTarget, goalTitle, isGoalDone, routeOptions } from './goalModel';
 import './goals.css';
 
 // 改修目標（S03 一覧・S04 追加と計算プレビュー・S19 工程と改修条件・S14 配置できない予定）。design/09・17。
@@ -229,7 +229,12 @@ export function GoalFormPage() {
     if (!selected) return setMessage('装備を選んでください。');
     if (editing && JSON.stringify(editing) === JSON.stringify(form) && to !== '/goals') return navigate(to);
     const r = await run('SaveGoal', handleSaveGoal, { goal: form, isNew: !editing }, { commandId });
-    if (!r.ok) return setMessage(r.message);
+    if (!r.ok) {
+      // 別のタブなどの変更と競合したら、フォームを最新の目標に読み直してから確認してもらう
+      const latest = r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH' ? r.latest.goals.find((g) => g.goalId === form.goalId) : undefined;
+      if (latest) setForm(latest);
+      return setMessage(r.message);
+    }
     navigate(to);
   };
   const remove = async () => {
@@ -240,6 +245,19 @@ export function GoalFormPage() {
   };
   const shortages = gp?.shortages ?? [];
   const priorities = Array.from({ length: (editing ? data.goals.length : data.goals.length + 1) }, (_, i) => i + 1);
+  // 編集中の目標が別のタブなどで削除されたら、新しい目標として保存し直さない
+  if (goalId && !editing) {
+    return (
+      <Page nav="goals" title="目標を編集">
+        <section className="card">
+          <p>この目標は見つかりません。別のタブなどで削除された可能性があります。</p>
+          <Link className="btn btn-primary" to="/goals">
+            目標一覧へ
+          </Link>
+        </section>
+      </Page>
+    );
+  }
 
   return (
     <Page nav="goals" title={editing ? '目標を編集' : '目標を追加'} sub="目標の条件を決めてから、必要数と予定への影響を確認します。">
@@ -313,7 +331,7 @@ export function GoalFormPage() {
                 id="route"
                 width={520}
                 value={form.routeKey ?? ''}
-                options={[{ value: '', label: `${master.equipmentName(form.equipmentId)}だけを改修（更新元から作らない）` }, ...routes.slice(1).map((r) => ({ value: r.key, label: r.equipmentIds.map((id) => master.equipmentName(id)).join(' → ') }))]}
+                options={routeOptions(master, form.equipmentId)}
                 onChange={(v) => set({ routeKey: v || null })}
               />
               {routeHasConversion ? (

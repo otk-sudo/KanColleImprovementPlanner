@@ -71,6 +71,18 @@ describe('実績の増減', () => {
     expect(wouldGoNegative(p, [{ scope: 'resource:7', amount: -4 }])).toEqual([]);
     expect(wouldGoNegative(p, [{ scope: 'equipment', equipmentId: 1, star: 5, amount: -2 }])).toEqual(['equipment']);
   });
+
+  it('確認待ちの下書きが確保した既知消費を差し引いて判定する（同じ在庫を二重に使わない）', () => {
+    const draft = { draftId: 'd1', attemptId: 'a1', stepKey: 's', occurredDateJst: '2026-10-14', occurredOrder: 1, reportedOutcome: 'success' as const, knownConsumptions: [{ scope: 'resource:8' as const, amount: -4 }, { scope: 'equipment' as const, equipmentId: 2, star: 0, amount: -1 }], unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open' as const, cancelReason: null, recipeSnapshot: null };
+    const p = projectInventory(baselinesFrom({ equipment: [[2, 0, 1]], resources: { 8: 5 } }), [], [draft]);
+    // ネジ5のうち4は下書きが確保済み。別の実績が4消費すると足りない
+    expect(wouldGoNegative(p, [{ scope: 'resource:8', amount: -4 }])).toEqual(['resource:8']);
+    expect(wouldGoNegative(p, [{ scope: 'resource:8', amount: -1 }])).toEqual([]);
+    expect(wouldGoNegative(p, [{ scope: 'equipment', equipmentId: 2, star: 0, amount: -1 }])).toEqual(['equipment']);
+    // その下書き自身を確定するときは、自分の確保分を除いた投影で判定する
+    const self = projectInventory(baselinesFrom({ equipment: [[2, 0, 1]], resources: { 8: 5 } }), [], []);
+    expect(wouldGoNegative(self, [{ scope: 'resource:8', amount: -4 }])).toEqual([]);
+  });
 });
 
 describe('訂正の基準境界と依存', () => {

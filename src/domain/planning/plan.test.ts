@@ -320,6 +320,55 @@ describe('確実化と完了予定（design/17）', () => {
   });
 });
 
+describe('レビュー指摘（PR #1）', () => {
+  it('担当艦で素材が変わる改修は、素材計画に使ったエントリの担当艦だけで配置する（素材計画と予定を食い違わせない）', () => {
+    const m = simpleMaster();
+    m.ships.push({ id: 102, name: 'K', yomi: '', shipTypeId: 2, afterShipId: null, afterLevel: null, familyId: 102, sortNo: 3 });
+    const zero = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, conv: null, extra: [] };
+    const useY = stage({ screws: 1, screwsGuaranteed: 1, equipment: [{ equipmentId: 2, count: 1 }] });
+    const useZ = stage({ screws: 1, screwsGuaranteed: 1, equipment: [{ equipmentId: 3, count: 1 }] });
+    // エントリ0：H改二（月曜のみ）で素材Y、エントリ1：K（毎日）で素材Z
+    m.recipes = [
+      {
+        equipmentId: 1,
+        entries: [
+          { entryIndex: 0, helpers: [{ shipIds: [101], days: [1] }], convert: null, cost: { ...zero, p1: useY, p2: useY } },
+          { entryIndex: 1, helpers: [{ shipIds: [102], days: ALL }], convert: null, cost: { ...zero, p1: useZ, p2: useZ } },
+        ],
+      },
+    ];
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const plan = buildPlan(planInput({ master: m, inventory: { equipment: [[1, 0, 1], [2, 0, 1]], ships: [101, 102], resources: { 8: 99, 7: 99 } }, goals: [g] }));
+    const p = plan.placements.find((x) => x.stepKey.startsWith('g|'))!;
+    expect(p.entryIndex).toBe(0);
+    expect(p.date).toBe('2026-10-19'); // 次の月曜
+    expect(p.tentative).toBe(false);
+    expect(plan.totals.find((t) => t.key === 'equipment:3')).toBeUndefined();
+  });
+
+  it('繰越後に元の試行を確認待ちで保存したら、同じ工程の後継は実行できない（結果確認待ち）', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const original = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-13', outcome: 'draft', lifecycle: 'superseded' });
+    const successor = attempt({ attemptId: 'g|1:0>1|0@2', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', predecessorAttemptId: original.attemptId });
+    const draft = { draftId: 'd1', attemptId: original.attemptId, stepKey: original.stepKey, occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome: 'success' as const, knownConsumptions: [], unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open' as const, cancelReason: null, recipeSnapshot: null };
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [original, successor], drafts: [draft] }));
+    expect(plan.steps.find((s) => s.stepKey === original.stepKey)?.blockers).toContain('RESULT_PENDING');
+    const kept = plan.placements.find((p) => p.attemptId === successor.attemptId);
+    expect(kept?.executionGate).not.toBe('ready');
+    expect(plan.attemptChanges.update.find((u) => u.attemptId === successor.attemptId)?.executionGate).toBe('reviewRequired');
+  });
+
+  it('更新経路で「この装備だけを改修」を明示した目標は、対象がなければ経路未選択ではなく対象不足', () => {
+    const m = simpleMaster({ craft: true }); // Z ★MAX → Y の更新経路がある
+    const explicit = goal({ goalId: 'e', equipmentId: 2, targetStar: 1, count: 1, routeKey: '2' });
+    const undecided = goal({ goalId: 'u', equipmentId: 2, targetStar: 1, count: 1, routeKey: null });
+    const plan = buildPlan(planInput({ master: m, inventory: { equipment: [], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [explicit, undecided] }));
+    expect(plan.unplaced.find((p) => p.goalId === 'e')?.reasons).toEqual(['TARGET_MISSING']);
+    expect(plan.unplaced.find((p) => p.goalId === 'u')?.reasons).toEqual(['ROUTE_REQUIRED']);
+  });
+});
+
 describe('不明と0の区別', () => {
   it('所持数が未取得の資材は不足を0と表示せず不明', () => {
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });

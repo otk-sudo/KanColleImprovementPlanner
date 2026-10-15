@@ -7,7 +7,7 @@ import { KaishuDb } from '../infrastructure/db';
 import type { AppData } from '../infrastructure/repository';
 import { loadMaster } from './masterLoader';
 import { AppRoutes } from './routes';
-import { StoreProvider } from './store';
+import { PageBaseTracker, StoreProvider } from './store';
 import { installTestHooks } from './testHooks';
 
 type Boot =
@@ -68,6 +68,7 @@ export function App() {
   return (
     <StoreProvider service={boot.service} master={boot.master} manifest={boot.manifest} initialData={boot.data}>
       <HashRouter>
+        <PageBaseTracker />
         <AppRoutes />
       </HashRouter>
     </StoreProvider>

@@ -4,6 +4,7 @@ import type { ScopeKey } from '../../domain/inventory/types';
 import type { DateJst } from '../../domain/jst';
 import type { AttemptCost, MasterIndex, Transition } from '../../domain/master';
 import type { Delta, GuaranteeMode, PlannedCost } from '../../domain/model';
+import type { ConsumedItem } from '../../domain/planning/types';
 import { buildDeltas, type ConsumptionInput } from '../../domain/results/results';
 
 // 改修結果の入力（S13）。成功は計画費用を候補として表示し利用者が確定、失敗は空欄から実消費を入力（成功時費用を写さない）。
@@ -14,7 +15,7 @@ export interface ConsumptionRow {
   id: number;
   label: string;
   planned: number;
-  /** 装備素材の★（低い★を既定） */
+  /** 装備素材の★（計画の割り当て、なければ所持する最も低い★） */
   star: number;
   stars: number[];
   primary: boolean;
@@ -32,6 +33,8 @@ export interface RecordForm {
   stars: Record<string, number>;
   scopeAnswers: Partial<Record<ScopeKey, 'apply' | 'historyOnly'>>;
   reason: string;
+  /** 入力を始めた時点の保存データの版。記録・確認待ち・過去実績の画面をまたいで確定まで使う */
+  base: { datasetEpoch: string; expectedRevision: number };
 }
 
 export function plannedFrom(cost: AttemptCost | null, mode: GuaranteeMode): PlannedCost | null {
@@ -48,7 +51,24 @@ export function plannedFrom(cost: AttemptCost | null, mode: GuaranteeMode): Plan
   };
 }
 
-export function consumptionRows(m: MasterIndex, planned: PlannedCost | null, projection: InventoryProjection, extra: Delta[] = []): ConsumptionRow[] {
+/** 計画の配置が素材装備ごとに割り当てた★の内訳（装備ID → ★と個数） */
+export type StarAllocation = ReadonlyMap<number, readonly { star: number; count: number }[]>;
+
+export function allocationFrom(consumption: readonly ConsumedItem[] | null | undefined): Map<number, { star: number; count: number }[]> {
+  const out = new Map<number, { star: number; count: number }[]>();
+  for (const c of consumption ?? []) if (c.key.startsWith('equipment:') && c.stars && c.stars.length > 0) out.set(Number(c.key.split(':')[1]), c.stars);
+  return out;
+}
+
+function equipmentRowKey(equipmentId: number, star: number): string {
+  return `equipment:${equipmentId}:${star}`;
+}
+
+/**
+ * 消費の入力行。素材装備は★ごとに1行とし、計画の★割り当て（なければ所持する最も低い★）を候補にする。
+ * 保存済みの記録・下書き（extra）にある★も行として出す。行の★は選び直せる。
+ */
+export function consumptionRows(m: MasterIndex, planned: PlannedCost | null, projection: InventoryProjection, extra: Delta[] = [], allocation: StarAllocation = new Map()): ConsumptionRow[] {
   const rows: ConsumptionRow[] = [];
   const res = (id: number, amount: number, primary: boolean) => rows.push({ key: `resource:${id}`, kind: 'resource', id, label: m.resourceName(id).replace(/（.*）$/, ''), planned: amount, star: 0, stars: [], primary });
   res(8, planned?.screws ?? 0, true);
@@ -57,7 +77,22 @@ export function consumptionRows(m: MasterIndex, planned: PlannedCost | null, pro
   for (const id of eqIds) {
     const owned = [...equipmentStars(projection, id).keys()].sort((a, b) => a - b);
     const p = planned?.equipment.find((e) => e.equipmentId === id)?.count ?? 0;
-    rows.push({ key: `equipment:${id}`, kind: 'equipment', id, label: m.equipmentName(id), planned: p, star: owned[0] ?? 0, stars: owned.length > 0 ? owned : [0], primary: true });
+    const dist = new Map<number, number>();
+    for (const d of extra) if (d.scope === 'equipment' && d.amount < 0 && d.equipmentId === id) dist.set(d.star, 0);
+    let left = p;
+    for (const a of allocation.get(id) ?? []) {
+      dist.set(a.star, (dist.get(a.star) ?? 0) + a.count);
+      left -= a.count;
+    }
+    // 割り当てで足りない分（不足・製作予定）は、行がある最も低い★か、所持する最も低い★に寄せる
+    if (left > 0 || dist.size === 0) {
+      const star = dist.size > 0 ? Math.min(...dist.keys()) : (owned[0] ?? 0);
+      dist.set(star, (dist.get(star) ?? 0) + Math.max(0, left));
+    }
+    for (const [star, count] of [...dist].sort((a, b) => a[0] - b[0])) {
+      const stars = [...new Set([...owned, star])].sort((a, b) => a - b);
+      rows.push({ key: equipmentRowKey(id, star), kind: 'equipment', id, label: m.equipmentName(id), planned: count, star, stars, primary: true });
+    }
   }
   const itemIds = new Set<number>([...(planned?.useItems ?? []).map((u) => u.useItemId), ...extra.filter((d) => d.scope.startsWith('item:')).map((d) => Number(d.scope.split(':')[1]))]);
   for (const id of itemIds) rows.push({ key: `item:${id}`, kind: 'item', id, label: m.useItemName(id), planned: planned?.useItems.find((u) => u.useItemId === id)?.count ?? 0, star: 0, stars: [], primary: true });
@@ -96,8 +131,9 @@ export function valuesFromDeltas(deltas: Delta[], transition: Transition, outcom
     if (d.scope === 'equipment') {
       const isTarget = outcome === 'success' && d.amount === -1 && d.equipmentId === transition.equipmentId && d.star === (transition.kind === 'improve' ? transition.fromStar : 10);
       if (isTarget) continue;
-      values[`equipment:${d.equipmentId}`] = String((Number(values[`equipment:${d.equipmentId}`] ?? 0) || 0) - d.amount);
-      stars[`equipment:${d.equipmentId}`] = d.star;
+      const key = equipmentRowKey(d.equipmentId, d.star);
+      values[key] = String((Number(values[key] ?? 0) || 0) - d.amount);
+      stars[key] = d.star;
     } else values[d.scope] = String(-d.amount);
   }
   return { values, stars };
@@ -133,7 +169,13 @@ export function deltasFromForm(form: RecordForm, rows: ConsumptionRow[], transit
     }
     if (r.kind === 'resource') consumption.resources[r.id] = n;
     else if (r.kind === 'item') consumption.useItems[r.id] = n;
-    else if (n > 0) consumption.equipment.push({ equipmentId: r.id, star: form.stars[r.key] ?? r.star, count: n });
+    else if (n > 0) {
+      // ★を選び直して同じ★になった行は合算する
+      const star = form.stars[r.key] ?? r.star;
+      const same = consumption.equipment.find((e) => e.equipmentId === r.id && e.star === star);
+      if (same) same.count += n;
+      else consumption.equipment.push({ equipmentId: r.id, star, count: n });
+    }
   }
   const outcome = form.outcome === 'success' || form.outcome === 'failure' || form.outcome === 'skip' ? form.outcome : 'failure';
   const deltas = form.outcome === 'voided' ? [] : buildDeltas({ transition, outcome, consumption });

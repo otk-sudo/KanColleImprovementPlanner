@@ -14,8 +14,15 @@ import type { AppData, HandlerResult, ValidationIssue } from '../infrastructure/
 
 const fail = (code: string, message: string, details?: unknown): HandlerResult<never> => ({ ok: false, errors: [{ code, message, ...(details !== undefined ? { details } : {}) }] });
 
-function projection(data: AppData) {
-  return projectInventory(data.baselines, data.resultEvents, data.drafts);
+function projection(data: AppData, excludeDraftId: string | null = null) {
+  // 下書きを確定するときは、その下書き自身の確保分を除く（同じ消費を二重に引かない）
+  return projectInventory(data.baselines, data.resultEvents, excludeDraftId ? data.drafts.filter((d) => d.draftId !== excludeDraftId) : data.drafts);
+}
+
+/** 実施の前後関係（日付 → 日内順） */
+function happenedBefore(a: { date: DateJst; order: number }, b: { date: DateJst; order: number }): boolean {
+  const c = compareDate(a.date, b.date);
+  return c < 0 || (c === 0 && a.order < b.order);
 }
 
 // ---------------- 取り込み ----------------
@@ -175,6 +182,12 @@ export interface RecordResultResult {
   cancelledSuccessors: string[];
 }
 
+/** 記録する実績の日内順（予定どおりの日なら予定の順番、別の日ならその日の記録の後ろ） */
+export function recordOrderFor(data: Pick<AppData, 'resultEvents'>, attempt: Attempt, occurredDateJst: DateJst): number {
+  if (attempt.scheduledDate === occurredDateJst) return attempt.dayOrder;
+  return data.resultEvents.filter((e) => e.occurredDateJst === occurredDateJst).length + 1;
+}
+
 function seqOf(a: Attempt): number {
   return Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1)) || 0;
 }
@@ -200,6 +213,10 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
     if (missing.length > 0) return fail('SCOPE_UNANSWERED', '未回答の種類があるため実績を確定できません。', { missing });
   }
   const historyOnly = [...new Set([...fixed, ...p.historyOnlyScopes.filter((s) => scopes.includes(s))])];
+  // 確認待ち（対象消失・担当艦や条件の不成立）の予定は、装備を履歴だけに記録する場合（取り込み前の記録漏れ）を除き確定しない
+  if (attempt.executionGate === 'reviewRequired' && p.outcome !== 'skip' && !historyOnly.includes('equipment')) {
+    return fail('REVIEW_REQUIRED', 'この予定は所持データの更新などで確認待ちです（改修対象・担当艦・保護の条件が変わりました）。取り込み前に実施した場合は「記録漏れ」を選び、装備を履歴だけに記録してください。');
+  }
 
   // 繰越後の過去実績（S29）：成功なら結果のない後継を取消、結果のある後継は自動で取り消さない
   const cancelled: Attempt[] = [];
@@ -212,10 +229,17 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   }
 
   const applied = p.deltas.filter((d) => !historyOnly.includes(d.scope));
-  const negative = wouldGoNegative(projection(data), applied);
+  const negative = wouldGoNegative(projection(data, p.fromDraftId), applied);
   if (negative.length > 0) return fail('NEGATIVE_INVENTORY', '記録すると所持数が負になる項目があります。未記録の入手がないか、所持データが最新か確認してください。', { scopes: negative });
 
-  const sameDay = data.resultEvents.filter((e) => e.occurredDateJst === p.occurredDateJst).length;
+  const occurredOrder = recordOrderFor(data, attempt, p.occurredDateJst);
+  // 入力元（前の工程の成功・素材の製作）は、この実施より前に起きたものだけ（日付が逆向きの依存を保存しない）
+  for (const id of p.inputSourceEventIds) {
+    const src = data.resultEvents.find((e) => e.eventId === id);
+    if (!src || src.status !== 'active' || !happenedBefore({ date: src.occurredDateJst, order: src.occurredOrder }, { date: p.occurredDateJst, order: occurredOrder })) {
+      return fail('BACKWARD_DEPENDENCY', '前の工程の記録より前の日付には記録できません。実施日を確認してください。', { sourceEventId: id });
+    }
+  }
   const event: ResultEvent = {
     eventId: p.eventId,
     attemptId: attempt.attemptId,
@@ -226,7 +250,7 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
     status: 'active',
     outcome: p.outcome,
     occurredDateJst: p.occurredDateJst,
-    occurredOrder: attempt.scheduledDate === p.occurredDateJst ? attempt.dayOrder : sameDay + 1,
+    occurredOrder,
     recordedAt: p.now,
     deltas: p.deltas,
     historyOnlyScopes: historyOnly,
@@ -320,7 +344,9 @@ export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResu
     cancelReason: null,
     recipeSnapshot: p.recipeSnapshot,
   };
-  return { ok: true, writes: { put: { drafts: [draft], attempts: [{ ...attempt, outcome: 'draft' }] }, meta: { planDirty: true } }, result: { draftId: draft.draftId } };
+  // 繰越後の元の試行を確認待ちにした場合、結果が決まるまで同じ工程の後継を実行させない（元が成功なら後継は不要）
+  const gatedSuccessors = laterAttempts(data, attempt).filter((x) => x.lifecycle === 'active' && x.outcome === 'none').map((x) => ({ ...x, executionGate: 'reviewRequired' as const }));
+  return { ok: true, writes: { put: { drafts: [draft], attempts: [{ ...attempt, outcome: 'draft' }, ...gatedSuccessors] }, meta: { planDirty: true } }, result: { draftId: draft.draftId } };
 }
 
 export function handleCancelDraft(data: AppData, p: { draftId: string; reason: string; now: string }): HandlerResult<null> {
@@ -378,6 +404,15 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const attempt = data.attempts.find((a) => a.attemptId === e.attemptId);
   const attempts: Attempt[] = [];
   if (attempt) attempts.push({ ...attempt, outcome: p.newOutcome === 'voided' ? 'none' : p.newOutcome, resultEventId: p.newOutcome === 'voided' ? null : e.eventId });
+  // 成功へ訂正すると同じ工程の再挑戦・繰越の後継は不要になる。記録のときと同じく、結果のない後継は取り消し、
+  // 結果のある後継があれば自動で取り消さず保存しない（同じ工程の成功と後継の結果を二重に持たない）
+  if (attempt && p.newOutcome === 'success' && e.outcome !== 'success') {
+    for (const s of laterAttempts(data, attempt)) {
+      if (s.lifecycle !== 'active') continue;
+      if (s.outcome === 'none') attempts.push({ ...s, lifecycle: 'cancelled', cancelReason: '元の記録を成功へ訂正したため不要になった後継' });
+      else return fail('SUCCESSOR_HAS_RESULT', '同じ工程の後継の予定に既に結果があるため、成功へ訂正できません。後継の記録を先に確認してください。', { successorAttemptId: s.attemptId, successorOutcome: s.outcome, successorDate: s.scheduledDate });
+    }
+  }
   const daySkips = p.newOutcome !== 'skip' && e.outcome === 'skip' ? data.daySkips.filter((d) => d.date === e.occurredDateJst).map((d) => d.date) : [];
   return { ok: true, writes: { put: { resultEvents: [corrected], attempts }, remove: { daySkips }, meta: { planDirty: true } }, result: { revision: corrected.revision } };
 }

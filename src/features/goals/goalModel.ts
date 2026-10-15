@@ -1,4 +1,4 @@
-import type { MasterIndex } from '../../domain/master';
+import { enumerateRoutes, type MasterIndex } from '../../domain/master';
 import type { Goal } from '../../domain/model';
 import type { GoalPlan, PlanResult, UnplacedReason } from '../../domain/planning/types';
 import { formatShortDate } from '../../domain/jst';
@@ -58,4 +58,18 @@ export function isGoalDone(gp: GoalPlan | undefined): boolean {
 
 export function goalPlanOf(plan: PlanResult | null, goalId: string): GoalPlan | undefined {
   return plan?.goals.find((g) => g.goalId === goalId);
+}
+
+/**
+ * 目標フォームの更新経路の選択肢。未選択（空）と「対象だけを改修」（対象のみの経路キー）を区別する。
+ * 未選択のまま対象が足りなければ計画は経路の選択を求め、対象だけを選べば対象不足として扱う。
+ */
+export function routeOptions(m: MasterIndex, equipmentId: number): { value: string; label: string }[] {
+  const routes = enumerateRoutes(m, equipmentId);
+  if (routes.length <= 1) return [];
+  return [
+    { value: '', label: '未選択（所持していない場合の作り方を選ぶ）' },
+    { value: routes[0]!.key, label: `${m.equipmentName(equipmentId)}だけを改修（更新元から作らない）` },
+    ...routes.slice(1).map((r) => ({ value: r.key, label: r.equipmentIds.map((id) => m.equipmentName(id)).join(' → ') })),
+  ];
 }

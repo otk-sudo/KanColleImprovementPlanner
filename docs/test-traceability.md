@@ -12,10 +12,10 @@
 | A04 | plan.test.ts（P01〜P05、確実化 P35/P36）、index.test.ts（p1/p2/extra・更新） | 実マスターの全レシピを手計算と照合した記録はなし（網羅性は master:crosscheck で出典と一致を確認） |
 | A05 | plan.test.ts（担当艦の改造段階違い・未所持・不明）、inventoryModel.test.ts | — |
 | A06 | plan.test.ts（曜日・休み・上限・P06〜P08・P19）、e2e/record.spec.ts「A03/A06」 | — |
-| A07 | rollover.test.ts、service.test.ts（P10・P23・P24・P42/P29）、e2e/record.spec.ts（日付変更後の繰越・スキップ） | スリープ復帰の実機確認 |
+| A07 | rollover.test.ts、service.test.ts（P10・P23・P24・P42/P29）、e2e/record.spec.ts（日付変更後の繰越・スキップ・過去日の記録を未実施へ訂正した直後の繰越） | スリープ復帰の実機確認 |
 | A08 | calendarModel.test.ts（P38）、画面比較 S01/S02/S18 | — |
-| A09 | results.test.ts、projection.test.ts（P13〜P15・P45〜P47・P50）、service.test.ts（P12・P27・P47）、e2e/record.spec.ts（成功→失敗の訂正、確認待ち→未実施） | — |
-| A10 | service.test.ts（P16・P17・P20・P33・P54・P55・P63〜P67）、backup.test.ts、masterLoader.test.ts（P34）、e2e/robustness.spec.ts、e2e/import.spec.ts（壊れたJSON） | — |
+| A09 | results.test.ts、projection.test.ts（P13〜P15・P45〜P47・P50）、service.test.ts（P12・P27・P47）、e2e/record.spec.ts（成功→失敗の訂正、確認待ち→未実施）、recordModel.test.ts（素材装備の★ごとの消費） | — |
+| A10 | service.test.ts（P16・P17・P20・P33・P54・P55・P63〜P67）、backup.test.ts、masterLoader.test.ts（P34）、e2e/robustness.spec.ts（通知後も開いていた編集フォームは競合、削除済みの目標を復活させない）、e2e/record.spec.ts（同日の取り込みで確認待ちになった予定）、e2e/import.spec.ts（壊れたJSON） | — |
 | A11 | e2e/layout.spec.ts（1280×720・1024×768・720×470 で横あふれなし、キーボード操作） | Windows の Chrome/Edge 実機での目視操作確認、2経路ガイドの実機手順検証 |
 | A12 | 画面比較（画像あり条件 S03/S16/S22、ローカル専用画像）、GameImage の欠損時表示 | ゲーム画像の公開配布条件の確認。既定では画像を表示しない |
 | A13 | e2e/layout.spec.ts（拡大画像を Esc で閉じる）、guide.capture.ts（アプリ画面の画像と注釈位置） | ゲーム側の操作（開発者ツール・74式EN の設定）の実機撮影。現在は「画像未取得」と表示 |
@@ -49,3 +49,18 @@
 | P63〜P67 | service.test.ts |
 
 不変条件（design/11「変えてはいけない不変条件」）：実在庫を計画・取消・スキップで変えない（e2e/record.spec.ts のスキップ、plan.test.ts の P09）、同じ数量枠の二重割当なし（P01〜P03、素材の仮想在庫を二重に引かない回帰テスト）、有効な次回試行は1つ（P10・P51）、不明を0として完了しない（plan.test.ts「不明と0の区別」）。
+
+## PR #1 の Codex レビュー指摘への回帰テスト
+
+| 指摘 | テスト |
+|---|---|
+| 下書きの確保分を差し引いて負在庫を判定 | results.test.ts「確認待ちの下書きが確保した既知消費を差し引いて判定する」、service.test.ts「レビュー指摘（PR #1）」 |
+| 素材装備を★ごとに記録 | recordModel.test.ts「素材装備の★ごとの消費」 |
+| 予定のレシピ候補で素材を展開 | plan.test.ts「レビュー指摘（PR #1）」 |
+| 確認待ちの予定の結果を拒否 | service.test.ts「レビュー指摘（PR #1）」、e2e/record.spec.ts「同日の取り込みで確認待ちになった予定」 |
+| 画面・フォームを開いた時点の版で確定 | e2e/robustness.spec.ts「先に開いた編集フォームの確定は競合」「削除した目標を…復活させない」 |
+| 成功への訂正で後継の試行を整理 | service.test.ts「レビュー指摘（PR #1）」 |
+| 過去日の未実施への訂正後に繰越 | e2e/record.spec.ts「過去日の記録を「実施していなかった」へ訂正すると…」 |
+| 確認待ちの下書きがある間は後継を止める | plan.test.ts「レビュー指摘（PR #1）」（繰越後に元の試行を確認待ちで保存） |
+| 入力元は実施日時より前の成功だけ | service.test.ts「レビュー指摘（PR #1）」 |
+| 「対象だけを改修」を未選択と区別 | plan.test.ts「レビュー指摘（PR #1）」、goalModel.test.ts |

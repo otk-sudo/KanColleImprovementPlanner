@@ -8,7 +8,7 @@ import type { Goal } from '../domain/model';
 import { KaishuDb } from '../infrastructure/db';
 import { loadData } from '../infrastructure/repository';
 import { FX, fixtureMaster } from '../test-support/fixtureMaster';
-import { AppService, type Clock } from './service';
+import { AppService, inferInputSources, type Clock } from './service';
 import {
   handleCancelDraft,
   handleCorrectResult,
@@ -367,7 +367,7 @@ describe('実績・下書き・翌日処理', () => {
     const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
     await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'failure'), await base(s));
     const env = await base(s);
-    const payload = { stepKey: a.stepKey, attemptId: a.attemptId, today: s.today(), limit: 3, now: s.nowIso() };
+    const payload = { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 3, now: s.nowIso() };
     const [r1, r2] = await Promise.all([s.run('SameDayRetry', handleSameDayRetry, payload, env), s.run('SameDayRetry', handleSameDayRetry, payload, env)]);
     expect([r1.status, r2.status].sort()).toEqual(['APPLIED', 'CONFLICT']);
     await s.recalculate();
@@ -390,6 +390,79 @@ describe('実績・下書き・翌日処理', () => {
     expect((await s.run('RecordResult', handleRecordResult, finalize, await base(s))).status).toBe('APPLIED');
     const d = await s.load();
     expect(d.attempts.filter((x) => x.scheduledDate === s.today() && x.outcome !== 'none')).toHaveLength(2);
+  });
+});
+
+describe('レビュー指摘（PR #1）', () => {
+  it('確認待ちの下書きを確定するときは、その下書き自身の確保分を二重に引かない', async () => {
+    const s = await service();
+    await seedPlan(s, { screws: 4 });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('SaveDraftResult', handleSaveDraft, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [{ scope: 'resource:8', amount: -4 }], unknownScopes: ['resource:7', 'equipment'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' }, await base(s));
+    const finalize = await recordPayload(s, a.attemptId, 'failure', { fromDraftId: 'd', deltas: [{ scope: 'resource:8', amount: -4 }] });
+    expect((await s.run('RecordResult', handleRecordResult, finalize, await base(s))).status).toBe('APPLIED');
+  });
+
+  it('確認待ち（reviewRequired）の予定には、装備を履歴だけにしない限り結果を確定しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    // 当日に所持データを取り込み直し、改修対象（★5）が消えた
+    await importText(s, `[{"id":${FX.mainGunA},"lv":6},{"id":${FX.materialA},"lv":0}]`);
+    const gated = (await s.load()).attempts.find((x) => x.attemptId === a.attemptId)!;
+    expect(gated.executionGate).toBe('reviewRequired');
+    const r = await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'success'), await base(s));
+    expect(r.status).toBe('VALIDATION_ERROR');
+    if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('REVIEW_REQUIRED');
+    // 取り込み前に実施した記録漏れとして、装備を履歴だけに記録するのは可能
+    const missed = await recordPayload(s, a.attemptId, 'success', { requireScopeAnswers: true, answeredScopes: ['equipment', 'resource:7', 'resource:8'], historyOnlyScopes: ['equipment', 'resource:7', 'resource:8'] });
+    expect((await s.run('RecordResult', handleRecordResult, missed, await base(s))).status).toBe('APPLIED');
+  });
+
+  it('失敗を成功へ訂正すると、結果のない後継を取り消し、結果のある後継があれば保存しない', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const failed = await recordPayload(s, a.attemptId, 'failure');
+    await s.run('RecordResult', handleRecordResult, failed, await base(s));
+    await s.run('SameDayRetry', handleSameDayRetry, { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' }, await base(s));
+    const retry = (await s.load()).attempts.find((x) => x.stepKey === a.stepKey && x.outcome === 'none' && x.lifecycle === 'active')!;
+    expect(retry).toBeDefined();
+    const success = buildDeltas({ transition: a.transition, outcome: 'success', consumption: { resources: { 8: 3, 7: 4 }, equipment: [{ equipmentId: FX.materialA, star: 0, count: 2 }], useItems: {} } });
+    const r = await s.run('CorrectResult', handleCorrectResult, { eventId: failed.eventId, newOutcome: 'success', newDeltas: success, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '' }, await base(s));
+    expect(r.status).toBe('APPLIED');
+    const d = await s.load();
+    expect(d.attempts.find((x) => x.attemptId === retry.attemptId)?.lifecycle).toBe('cancelled');
+    expect(d.attempts.filter((x) => x.stepKey === a.stepKey && x.lifecycle === 'active' && x.outcome === 'none')).toHaveLength(0);
+  });
+
+  it('失敗を成功へ訂正するとき、後継に結果があれば自動で取り消さず保存しない', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const failed = await recordPayload(s, a.attemptId, 'failure');
+    await s.run('RecordResult', handleRecordResult, failed, await base(s));
+    await s.run('SameDayRetry', handleSameDayRetry, { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' }, await base(s));
+    const retry = (await s.load()).attempts.find((x) => x.stepKey === a.stepKey && x.outcome === 'none' && x.lifecycle === 'active')!;
+    const retryFailed = await recordPayload(s, retry.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }] });
+    expect((await s.run('RecordResult', handleRecordResult, retryFailed, await base(s))).status).toBe('APPLIED');
+    const success = buildDeltas({ transition: a.transition, outcome: 'success', consumption: { resources: { 8: 3, 7: 4 }, equipment: [{ equipmentId: FX.materialA, star: 0, count: 2 }], useItems: {} } });
+    const r = await s.run('CorrectResult', handleCorrectResult, { eventId: failed.eventId, newOutcome: 'success', newDeltas: success, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '' }, await base(s));
+    expect(r.status).toBe('VALIDATION_ERROR');
+    if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('SUCCESSOR_HAS_RESULT');
+  });
+
+  it('実施日より後に記録された成功を入力元にしない（日付が逆向きの依存は保存しない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const producer = await recordPayload(s, a.attemptId, 'success', { recipeSnapshot: { masterVersion: m.version, transition: a.transition, fromName: '', toName: '', mode: 'normal', entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null } });
+    expect((await s.run('RecordResult', handleRecordResult, producer, await base(s))).status).toBe('APPLIED');
+    const d = await s.load();
+    const consumerAttempt = { ...a, attemptId: 'later@1', stepKey: 'g1|1001:6>7|0', transition: { kind: 'improve' as const, equipmentId: FX.mainGunA, fromStar: 6, toStar: 7 }, scheduledDate: '2026-10-13' };
+    // 推定：10/13 に実施した後続は、10/14 の成功を入力元にしない
+    expect(inferInputSources(d.resultEvents, consumerAttempt, [], { date: '2026-10-13', order: 1 })).toEqual([]);
+    expect(inferInputSources(d.resultEvents, consumerAttempt, [], { date: '2026-10-14', order: 9 })).toEqual([producer.eventId]);
   });
 });
 

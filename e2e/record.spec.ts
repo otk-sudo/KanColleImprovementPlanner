@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ID } from './support/masters';
-import { start, state } from './support/app';
+import { pasteAndApply, start, state } from './support/app';
 import { eqBaseline, shipBaseline, valueBaseline, type BackupSpec } from './support/scenario';
 
 // 目標・記録・訂正・確認待ち・翌日処理（R07〜R20、A03・A06・A07・A09）。2026-10-14（水）09:00 JST に固定。
@@ -69,7 +69,7 @@ test('A09：成功を記録すると★と消費が反映され、失敗へ訂�
   await expect(page.getByText('主砲A ★5：0 → 1')).toBeVisible();
   await page.getByRole('button', { name: '内容を確認' }).click();
   await page.getByRole('button', { name: 'この内容で訂正' }).click();
-  await page.waitForURL(/#\/history/);
+  await page.waitForURL(/#\/history$/);
   d = await state(page);
   expect(d.resultEvents[0]!.outcome).toBe('failure');
   expect(d.resultEvents[0]!.revision).toBe(2);
@@ -96,7 +96,7 @@ test('A09：消費が分からない実施は確認待ちで保存し、未実�
   await page.getByRole('link', { name: '実施していなかった' }).click();
   await page.getByLabel('訂正理由（必須）').fill('予定と取り違えた');
   await page.getByRole('button', { name: '未実施として訂正' }).click();
-  await page.waitForURL(/#\/history/);
+  await page.waitForURL(/#\/history\?tab=drafts$/);
   d = await state(page);
   expect(d.drafts[0]!.status).toBe('cancelled');
   expect(d.drafts[0]!.cancelReason).toBe('予定と取り違えた');
@@ -121,6 +121,61 @@ test('A07：日本時間の日付が変わると未実施の予定だけを次�
   expect(d.attempts.filter((a) => a.stepKey === original.stepKey && a.lifecycle === 'active' && a.outcome === 'none')).toHaveLength(1);
   await page.goto('/#/history');
   await expect(page.getByText('10/14の未完了1件を、実行可能な次の日へ移しました')).toBeVisible();
+});
+
+test('A07：過去日の記録を「実施していなかった」へ訂正すると、その場で翌日処理して次の実施可能日へ移す', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await recordToday(page, '成功');
+  const original = (await state(page)).attempts.find((a) => a.scheduledDate === '2026-10-14' && a.outcome === 'success')!;
+  await page.clock.setFixedTime(new Date('2026-10-15T00:00:00.000Z')); // 10/15（木）09:00 JST
+  await page.reload();
+  await page.waitForSelector('h1');
+  await page.goto('/#/history');
+  await page.getByRole('link', { name: '記録を修正' }).first().click();
+  await page.getByRole('radio', { name: '実施していなかった' }).click();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await page.getByRole('button', { name: 'この内容で訂正' }).click();
+  await page.waitForURL(/#\/history$/);
+  // 過去日に未完了の予定を残さず、後継を1つだけ作る（フォーカス復帰などを待たない）
+  const d = await state(page);
+  expect(d.attempts.find((a) => a.attemptId === original.attemptId)?.lifecycle).toBe('superseded');
+  const active = d.attempts.filter((a) => a.stepKey === original.stepKey && a.lifecycle === 'active' && a.outcome === 'none');
+  expect(active).toHaveLength(1);
+  expect(active[0]!.scheduledDate).toBe('2026-10-16');
+});
+
+test('A10：同日の取り込みで確認待ちになった予定は、そのまま確定できず、取り込み前の記録漏れとして装備を履歴のみにすれば記録できる', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  const a = (await state(page)).attempts.find((x) => x.scheduledDate === '2026-10-14')!;
+  // 改修対象（主砲A ★5）を含まない装備を同じ日に取り込む
+  await pasteAndApply(page, JSON.stringify([0, 1, 2].map(() => ({ id: ID.materialA, lv: 0 }))));
+  await expect.poll(async () => (await state(page)).attempts.find((x) => x.attemptId === a.attemptId)?.executionGate).toBe('reviewRequired');
+  await page.goto(`/#/attempts/${encodeURIComponent(a.attemptId)}/record`);
+  await page.getByRole('radio', { name: '成功' }).click();
+  await expect(page.getByText('この予定は所持データとの確認待ちです。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '内容を確認' })).toBeDisabled();
+  await page.getByText('最新の所持データを取り込む前に実施した記録漏れ').click();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await page.getByRole('button', { name: '種類ごとの反映を確認' }).click();
+  await page.waitForURL(/\/past$/);
+  for (const label of ['改修資材', '開発資材']) await page.getByLabel(`${label}の今回の実績の扱い`).selectOption('apply');
+  // 装備を所持数に反映する扱いは、確認待ちの予定では確定できない
+  await page.getByLabel('装備の今回の実績の扱い').selectOption('apply');
+  await expect(page.getByRole('button', { name: '確認待ちのため確定不可' })).toBeDisabled();
+  await page.getByLabel('装備の今回の実績の扱い').selectOption('historyOnly');
+  await page.getByRole('button', { name: 'この内容で確定' }).click();
+  await page.waitForURL(/#\/history$/);
+  const d = await state(page);
+  const ev = d.resultEvents.find((e) => e.attemptId === a.attemptId)!;
+  expect(ev.outcome).toBe('success');
+  expect(ev.historyOnlyScopes).toEqual(['equipment']);
+  // 資材は所持数に反映し（10 − 3）、装備は履歴だけなので取り込んだ数のまま
+  await page.goto('/#/inventory/items');
+  await expect(page.getByRole('row', { name: /改修資材（ネジ）/ })).toContainText('7');
+  await page.goto('/#/inventory/equipment');
+  await expect(page.getByRole('row', { name: /素材装備A ★0/ })).toContainText('3');
 });
 
 test('A07：スキップは資材も装備も消費せず、同日中は別の日へ自動移動しない', async ({ page }) => {

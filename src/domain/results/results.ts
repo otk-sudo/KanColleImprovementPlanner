@@ -48,7 +48,7 @@ export function scopesOfDeltas(deltas: Delta[]): ScopeKey[] {
   return [...set].sort((a, b) => (a === 'equipment' ? -1 : b === 'equipment' ? 1 : a.localeCompare(b)));
 }
 
-/** 既知在庫が負になる scope（装備は★単位）。不明在庫は判定しない */
+/** 既知在庫が負になる scope（装備は★単位）。確認待ちの下書きが確保した既知消費を差し引く。不明在庫は判定しない */
 export function wouldGoNegative(p: InventoryProjection, deltas: Delta[]): ScopeKey[] {
   const out = new Set<ScopeKey>();
   const eq = new Map<string, number>();
@@ -60,12 +60,12 @@ export function wouldGoNegative(p: InventoryProjection, deltas: Delta[]): ScopeK
     } else other.set(d.scope, (other.get(d.scope) ?? 0) + d.amount);
   }
   if (p.equipment.known) {
-    for (const [k, amount] of eq) if ((p.equipment.counts.get(k) ?? 0) + amount < 0) out.add('equipment');
+    for (const [k, amount] of eq) if ((p.equipment.counts.get(k) ?? 0) - (p.holds.get(`equipment:${k}`) ?? 0) + amount < 0) out.add('equipment');
   }
   for (const [scope, amount] of other) {
     const id = Number(scope.split(':')[1]);
     const v = scope.startsWith('resource:') ? p.resources.get(id) : p.items.get(id);
-    if (v && v.value + amount < 0) out.add(scope as ScopeKey);
+    if (v && v.value - (p.holds.get(scope) ?? 0) + amount < 0) out.add(scope as ScopeKey);
   }
   return [...out];
 }

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { AppService } from '../application/service';
 import type { ParseResult } from '../domain/import/parse';
 import { projectInventory, type InventoryProjection } from '../domain/inventory/projection';
@@ -13,12 +14,25 @@ import { newId, type AppData, type CommandOutcome, type Handler, type Validation
 
 export type SaveState = 'saved' | 'saving' | 'error' | 'dirty' | 'review';
 
+/** 確定操作の前提とした保存データの版。画面やフォームを開いた時点の値を使い、他タブの変更を上書きしない */
+export interface CommandBase {
+  datasetEpoch: string;
+  expectedRevision: number;
+}
+
+export function baseOf(d: AppData): CommandBase {
+  return { datasetEpoch: d.meta.datasetEpoch, expectedRevision: d.meta.revision };
+}
+
 export interface RunResult<R> {
   ok: boolean;
   outcome: CommandOutcome<R>;
   message: string | null;
   errors: ValidationIssue[];
   result: R | null;
+  /** 実行後に読み直した最新のデータと版（競合時にフォームを読み直すために使う） */
+  latest: AppData;
+  latestBase: CommandBase;
 }
 
 export interface ImportInput {
@@ -32,7 +46,8 @@ export interface ImportSession {
   route: 'browser' | '74en';
   inputs: ImportInput[];
   selection: Partial<Record<ScopeKey, number>>;
-  /** プレビューを作った時点の revision（確定時に再確認する） */
+  /** プレビューを作った時点の版（確定時に再確認する） */
+  datasetEpoch: string;
   revision: number;
   commandId: string;
   /** 確認操作を始めた日時（再送で同じ内容にするため固定） */
@@ -51,8 +66,11 @@ interface StoreValue {
   saveState: SaveState;
   saveMessage: string | null;
   busy: boolean;
-  run: <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string }) => Promise<RunResult<R>>;
-  refresh: () => Promise<void>;
+  /** options.base を省略すると、画面を開いた時点（またはこのタブの直前の確定後）の版で確定する */
+  run: <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string; base?: CommandBase }) => Promise<RunResult<R>>;
+  refresh: () => Promise<AppData>;
+  /** 画面を開いた時点の版を記録する（画面遷移ごとに呼ぶ） */
+  capturePageBase: () => void;
   recalculate: () => Promise<void>;
   importSession: ImportSession | null;
   setImportSession: (s: ImportSession | null) => void;
@@ -102,13 +120,22 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const [formCache] = useState(() => new Map<string, unknown>());
   const channel = useRef<BroadcastChannel | null>(null);
   const busyRef = useRef(false);
+  const dataRef = useRef<AppData>(initialData);
+  // 他タブの通知で表示用のデータを読み直しても、この版は更新しない（開いていた画面の確定を競合として扱う）
+  const pageBase = useRef<CommandBase>(baseOf(initialData));
 
   const refresh = useCallback(async () => {
     const d = await service.load();
+    dataRef.current = d;
     setData(d);
     setToday(service.today());
     setSaveState(d.meta.masterReviewRequired ? 'review' : d.meta.planDirty ? 'dirty' : 'saved');
+    return d;
   }, [service]);
+
+  const capturePageBase = useCallback(() => {
+    pageBase.current = baseOf(dataRef.current);
+  }, []);
 
   const broadcast = useCallback(() => {
     try {
@@ -121,7 +148,8 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const recalculate = useCallback(async () => {
     setSaveState('saving');
     const r = await service.recalculate();
-    await refresh();
+    // 利用者がこのタブで実行した再計算なので、画面の版も最新にする
+    pageBase.current = baseOf(await refresh());
     if (r === 'FAILED') {
       setSaveState('dirty');
       setSaveMessage('在庫は保存済みです。計画の再計算に失敗したため、再計算待ちです。');
@@ -130,23 +158,23 @@ export function StoreProvider({ service, master, manifest, initialData, children
   }, [service, refresh, broadcast]);
 
   const run = useCallback(
-    async <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string }): Promise<RunResult<R>> => {
+    async <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string; base?: CommandBase }): Promise<RunResult<R>> => {
       if (busyRef.current) {
-        return { ok: false, outcome: { status: 'CONFLICT', revision: data.meta.revision }, message: '保存中です。完了までお待ちください。', errors: [], result: null };
+        const latest = dataRef.current;
+        return { ok: false, outcome: { status: 'CONFLICT', revision: latest.meta.revision }, message: '保存中です。完了までお待ちください。', errors: [], result: null, latest, latestBase: baseOf(latest) };
       }
       busyRef.current = true;
       setBusy(true);
       setSaveState('saving');
       setSaveMessage(null);
       try {
-        const outcome = await service.run(commandType, handler, payload, {
-          datasetEpoch: data.meta.datasetEpoch,
-          expectedRevision: data.meta.revision,
-          commandId: options?.commandId ?? newId('cmd'),
-        });
-        await refresh();
+        const base = options?.base ?? pageBase.current;
+        const outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
+        const latest = await refresh();
         const message = messageFor(outcome);
         const ok = outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED';
+        // このタブの確定が保存された後と、競合を知らせた後は、最新の版を画面の版にする
+        if (ok || outcome.status === 'CONFLICT' || outcome.status === 'EPOCH_MISMATCH') pageBase.current = baseOf(latest);
         if (ok) {
           broadcast();
           if ('recalc' in outcome && outcome.recalc === 'FAILED') {
@@ -163,13 +191,15 @@ export function StoreProvider({ service, master, manifest, initialData, children
           message,
           errors: outcome.status === 'VALIDATION_ERROR' ? outcome.errors : [],
           result: outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED' ? outcome.result : null,
+          latest,
+          latestBase: baseOf(latest),
         };
       } finally {
         busyRef.current = false;
         setBusy(false);
       }
     },
-    [service, data.meta.datasetEpoch, data.meta.revision, refresh, broadcast],
+    [service, refresh, broadcast],
   );
 
   // 起動・フォーカス復帰・日付変更・他タブの変更
@@ -234,6 +264,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
     busy,
     run,
     refresh,
+    capturePageBase,
     recalculate,
     importSession,
     setImportSession,
@@ -249,4 +280,14 @@ export function useCommandId(...deps: unknown[]): string {
   const key = JSON.stringify(deps);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => newId('cmd'), [key]);
+}
+
+/** 画面遷移ごとに、その画面を開いた時点の版を記録する（ルーターの内側に置く） */
+export function PageBaseTracker() {
+  const location = useLocation();
+  const { capturePageBase } = useStore();
+  useLayoutEffect(() => {
+    capturePageBase();
+  }, [location.key, capturePageBase]);
+  return null;
 }

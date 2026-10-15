@@ -42,6 +42,8 @@ interface TransitionInfo {
   defaultCost: AttemptCost | null;
   defaultEntry: number | null;
   costVaries: boolean;
+  /** 素材装備・アイテムがエントリ（担当艦）によって異なる */
+  materialVaries: boolean;
 }
 
 interface Chain {
@@ -90,6 +92,16 @@ export function costItems(cost: AttemptCost, mode: GuaranteeMode): { key: CostKe
 
 function sameCost(a: AttemptCost, b: AttemptCost): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** 素材装備・アイテムの消費が同じか（資材の差は日程の仮想在庫が配置したエントリの費用で扱う） */
+function sameMaterials(a: AttemptCost | null, b: AttemptCost | null): boolean {
+  const norm = (c: AttemptCost | null) =>
+    JSON.stringify({
+      e: [...(c?.equipment ?? [])].sort((x, y) => x.equipmentId - y.equipmentId),
+      u: [...(c?.useItems ?? [])].sort((x, y) => x.useItemId - y.useItemId),
+    });
+  return norm(a) === norm(b);
 }
 
 function chainTransitions(m: MasterIndex, routeIds: number[], start: ChainStart, end: { equipmentId: number; star: number }): Transition[] {
@@ -187,6 +199,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         defaultCost: defaultOpt?.cost ?? null,
         defaultEntry: defaultOpt?.entryIndex ?? null,
         costVaries: options.some((o) => defaultOpt && !sameCost(o.cost, defaultOpt.cost)),
+        materialVaries: options.some((o) => defaultOpt && !sameMaterials(o.cost, defaultOpt.cost)),
       };
       infoCache.set(k, v);
     }
@@ -382,12 +395,19 @@ export function buildPlan(input: PlanInput): PlanResult {
       if (chain.craftedInputs.has(index)) craftedInputsByKey.set(stepKey, chain.craftedInputs.get(index)!);
       const ti = info(t);
       const pref = preferred.get(stepKey) ?? null;
-      const helper = pref === null ? ti.helper : helperInfo(m, ti.options, inv.ships, pref);
+      let helper = pref === null ? ti.helper : helperInfo(m, ti.options, inv.ships, pref);
+      // 素材がエントリで異なる改修は、素材計画（既定エントリの費用で展開）と同じ素材のエントリの担当艦だけで配置する
+      if (ti.materialVaries && helper.candidates.length > 0) {
+        const costOf = (entryIndex: number) => ti.options.find((o) => o.entryIndex === entryIndex)?.cost ?? null;
+        const same = helper.candidates.filter((c) => sameMaterials(costOf(c.entryIndex), ti.defaultCost));
+        helper = same.length > 0 ? { ...helper, candidates: same } : { ...helper, candidates: [], blockers: ['PREFERRED_HELPER_UNAVAILABLE'] };
+      }
       const blockers: UnplacedReason[] = [...helper.blockers];
       if (chain.blocked) blockers.unshift(chain.blocked);
       const latest = latestOf(stepKey);
       let earliestDate = today;
-      if (latest?.outcome === 'draft' && latest.lifecycle === 'active') blockers.unshift('RESULT_PENDING');
+      // 確認待ちの結果がある工程は、繰越後の後継があっても結果が決まるまで実行しない（元の試行が成功なら後継は不要になる）
+      if ((attemptsByKey.get(stepKey) ?? []).some((a) => a.outcome === 'draft' && a.lifecycle !== 'cancelled')) blockers.unshift('RESULT_PENDING');
       if (latest && (latest.outcome === 'failure' || latest.outcome === 'skip') && latest.scheduledDate === today) earliestDate = tomorrow;
       steps.push({
         stepKey,

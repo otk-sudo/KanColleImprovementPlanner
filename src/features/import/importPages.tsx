@@ -48,7 +48,7 @@ export function ImportPastePage() {
     setWorking(true);
     const result = await parseAsync(text, {});
     setWorking(false);
-    const session: ImportSession = { route: 'browser', inputs: [{ name: '貼り付けた内容', route: 'browser', result, excluded: false }], selection: {}, revision: data.meta.revision, commandId: newId('cmd'), startedAt: new Date().toISOString(), text };
+    const session: ImportSession = { route: 'browser', inputs: [{ name: '貼り付けた内容', route: 'browser', result, excluded: false }], selection: {}, datasetEpoch: data.meta.datasetEpoch, revision: data.meta.revision, commandId: newId('cmd'), startedAt: new Date().toISOString(), text };
     setImportSession(session);
     navigate(result.ok ? '/import/preview' : '/import/error');
   };
@@ -135,7 +135,7 @@ export function ImportFilePage() {
       const text = await f.text();
       inputs.push({ name: f.name, route: '74en', excluded: false, result: await parseAsync(text, { fileName: f.name }) });
     }
-    const next: ImportSession = { route: '74en', inputs, selection: {}, revision: data.meta.revision, commandId: newId('cmd'), startedAt: new Date().toISOString(), text: '' };
+    const next: ImportSession = { route: '74en', inputs, selection: {}, datasetEpoch: data.meta.datasetEpoch, revision: data.meta.revision, commandId: newId('cmd'), startedAt: new Date().toISOString(), text: '' };
     setImportSession(next);
     if (inputs.every((i) => !i.result.ok)) navigate('/import/error');
   };
@@ -481,11 +481,12 @@ export function ImportConfirmPage() {
   const confirm = async () => {
     const sources = importSession.inputs.filter((i) => i.result.ok && !i.excluded).map((i) => (i.result.ok ? { kind: i.result.value.kind, inputHash: i.result.value.inputHash, capturedAt: null } : null)).filter((x) => x !== null);
     // 再送で同じ内容になるよう、ID・日時は確認画面の操作単位で固定する
-    const r = await run('ImportInventory', handleImport, { updates: preview.updates, sources, snapshotId: `snap-${importSession.commandId}`, now: importSession.startedAt }, { commandId: importSession.commandId });
+    const r = await run('ImportInventory', handleImport, { updates: preview.updates, sources, snapshotId: `snap-${importSession.commandId}`, now: importSession.startedAt }, { commandId: importSession.commandId, base: { datasetEpoch: importSession.datasetEpoch, expectedRevision: importSession.revision } });
     if (!r.ok) {
       setMessage(r.message);
+      // 競合を知らせた後は、表示している最新の内容を前提に確定し直せるようにする
       if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH' || r.outcome.status === 'COMMAND_ID_REUSED') {
-        setImportSession({ ...importSession, revision: data.meta.revision, commandId: newId('cmd'), startedAt: new Date().toISOString() });
+        setImportSession({ ...importSession, datasetEpoch: r.latestBase.datasetEpoch, revision: r.latestBase.expectedRevision, commandId: newId('cmd'), startedAt: new Date().toISOString() });
       }
       return;
     }

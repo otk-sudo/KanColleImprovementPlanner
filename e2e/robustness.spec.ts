@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { BACKUP_FORMAT } from '../src/domain/backup';
 import { screenMaster } from './support/masters';
 import { pasteAndApply, start, state } from './support/app';
-import { backup, fixClock, serveFixtureMaster, valueBaseline, type BackupSpec } from './support/scenario';
+import { backup, fixClock, goal, serveFixtureMaster, valueBaseline, type BackupSpec } from './support/scenario';
 
 // 複数タブ・保存失敗・バックアップと復元（R02/R05、A07・A10）。
 
@@ -48,6 +48,51 @@ test('A10：通知が届かない古いタブからの保存は上書きせず�
   await b.getByRole('button', { name: '最新の所持データとして反映' }).click();
   await b.waitForURL(/#\/inventory\//);
   expect((await state(b)).baselines.find((x) => x.scope === 'resource:8')?.value).toBe(99);
+});
+
+test('A10：通知で最新を表示していても、先に開いた編集フォームの確定は競合として扱い、フォームを最新に読み直す', async ({ context }) => {
+  const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
+  const a = await context.newPage();
+  await start(a, { data: withGoal, route: '/goals/g1/edit' });
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto('/#/goals/g1/edit');
+  await expect(b.locator('.goal-count output')).toHaveText('1');
+  await b.getByRole('button', { name: '1個増やす' }).click();
+  // A が先に個数を3にして保存する（B には通知が届き、表示用のデータは最新になる）
+  await a.getByRole('button', { name: '1個増やす' }).click();
+  await a.getByRole('button', { name: '1個増やす' }).click();
+  await a.getByRole('button', { name: '目標を保存', exact: true }).click();
+  await a.waitForURL(/#\/goals$/);
+  await expect.poll(async () => (await state(b)).meta.revision).toBe((await state(a)).meta.revision);
+  // B のフォームは開いた時点の内容なので、上書きせず競合として扱う
+  await b.getByRole('button', { name: '目標を保存', exact: true }).click();
+  await expect(b.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  expect((await state(b)).goals.find((g) => g.goalId === 'g1')?.count).toBe(3);
+  await expect(b.locator('.goal-count output')).toHaveText('3');
+  // 最新の内容を確認してから保存すれば反映できる
+  await b.getByRole('button', { name: '1個増やす' }).click();
+  await b.getByRole('button', { name: '目標を保存', exact: true }).click();
+  await b.waitForURL(/#\/goals$/);
+  expect((await state(b)).goals.find((g) => g.goalId === 'g1')?.count).toBe(4);
+});
+
+test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
+  const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
+  const a = await context.newPage();
+  await start(a, { data: withGoal, route: '/goals/g1/edit' });
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto('/#/goals/g1/edit');
+  await expect(b.locator('.goal-count output')).toHaveText('1');
+  await a.getByRole('button', { name: 'この目標を削除' }).click();
+  await a.getByRole('button', { name: '削除する' }).click();
+  await a.waitForURL(/#\/goals$/);
+  await expect(b.getByText('この目標は見つかりません。')).toBeVisible();
+  await expect(b.getByRole('button', { name: '目標を保存', exact: true })).toHaveCount(0);
+  expect((await state(b)).goals.some((g) => g.goalId === 'g1')).toBe(false);
 });
 
 test('A10/P17：保存途中で容量不足になっても事実を保存せず、入力を保ったまま再試行できる', async ({ page }) => {

@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Page } from '../../app/Shell';
-import { useCommandId, useStore } from '../../app/store';
-import { handleCorrectResult, handleRecordResult, handleSaveDraft } from '../../application/commands';
+import { baseOf, useCommandId, useStore, type CommandBase, type RunResult } from '../../app/store';
+import { handleCorrectResult, handleRecordResult, handleSaveDraft, recordOrderFor } from '../../application/commands';
 import { inferInputSources } from '../../application/service';
+import { projectInventory } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
 import { compareDate, formatMonthDayWeek, formatJstMonthDayTime, isValidDate, parseDate, type DateJst } from '../../domain/jst';
 import { transitionOptions, transitionTo, transitionFrom } from '../../domain/master';
-import type { Attempt, RecipeSnapshot, ResultEvent } from '../../domain/model';
+import type { Attempt, Delta, RecipeSnapshot, ResultEvent } from '../../domain/model';
 import { fixedHistoryOnlyScopes, scopesOfDeltas, wouldGoNegative } from '../../domain/results/results';
 import { newId, type AppData } from '../../infrastructure/repository';
 import { costKeyPlain, recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import { DateBox } from '../../ui/SelectBox';
-import { consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { allocationFrom, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 import './record.css';
 
 // 改修結果の記録（S13）・実施済み確認待ち（S28）・過去実績の scope 確認（S34）。design/10・12、ui-design-v1 第4巡・第12巡。
@@ -34,6 +35,19 @@ function useAttemptContext(attemptId: string) {
   return { attempt, placement, event, planned, mode, entry };
 }
 
+/** 消費の入力行。記録・確認待ち・過去実績の各画面で同じ行（★ごとの割り当て）を使う */
+function useConsumptionRows(ctx: ReturnType<typeof useAttemptContext>, extra: Delta[]) {
+  const { master, projection } = useStore();
+  const placement = ctx.placement;
+  return useMemo(() => consumptionRows(master, ctx.planned, projection, extra, allocationFrom(placement?.consumption)), [master, ctx.planned, projection, extra, placement]);
+}
+
+function draftConsumptions(data: AppData, draftId: string | null): Delta[] {
+  return (draftId ? data.drafts.find((d) => d.draftId === draftId)?.knownConsumptions : undefined) ?? NO_DELTAS;
+}
+
+const NO_DELTAS: Delta[] = [];
+
 function recipeSnapshotFor(master: ReturnType<typeof useStore>['master'], attempt: Attempt, ctx: ReturnType<typeof useAttemptContext>): RecipeSnapshot {
   const to = transitionTo(attempt.transition);
   const from = transitionFrom(attempt.transition);
@@ -51,8 +65,9 @@ function recipeSnapshotFor(master: ReturnType<typeof useStore>['master'], attemp
   };
 }
 
-function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'], event: ResultEvent | null, eventValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftId: string | null): RecordForm {
+function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'], event: ResultEvent | null, eventValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftValues: { values: Record<string, string>; stars: Record<string, number> } | null, draftId: string | null, commandBase: CommandBase): RecordForm {
   const base: RecordForm = {
+    base: commandBase,
     attemptId: attempt.attemptId,
     mode,
     eventId: event?.eventId ?? null,
@@ -72,7 +87,7 @@ function initialForm(attempt: Attempt, today: DateJst, mode: RecordForm['mode'],
 
 export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) {
   const params = useParams();
-  const { data, master, today, projection, formCache, run, busy } = useStore();
+  const { data, master, today, projection, formCache, run, busy, service, refresh } = useStore();
   const navigate = useNavigate();
   const event = mode === 'correct' ? (data.resultEvents.find((e) => e.eventId === params.eventId) ?? null) : null;
   const draft = mode === 'resume' ? (data.drafts.find((d) => d.draftId === params.draftId) ?? null) : null;
@@ -81,13 +96,14 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const { attempt } = ctx;
   const cached = formCache.get(formKey(attemptId)) as RecordForm | undefined;
   // 訂正では改修対象そのものの★変化を消費の行にしない。確定済みの記録は消費0の行も 0 として復元する
-  const rows = useMemo(() => consumptionRows(master, ctx.planned, projection, event && attempt ? consumedDeltas(event.deltas, attempt.transition, event.outcome) : (draft?.knownConsumptions ?? [])), [master, ctx.planned, projection, event, draft, attempt]);
+  const extra = useMemo(() => (event && attempt ? consumedDeltas(event.deltas, attempt.transition, event.outcome) : (draft?.knownConsumptions ?? NO_DELTAS)), [event, draft, attempt]);
+  const rows = useConsumptionRows(ctx, extra);
   const [form, setForm] = useState<RecordForm | null>(() => {
     if (!attempt) return null;
     if (cached && cached.mode === mode) return cached;
     const dv = draft ? valuesFromDeltas(draft.knownConsumptions, attempt.transition, 'failure') : null;
     const ev = event ? savedValues(event.deltas, attempt.transition, event.outcome, rows) : null;
-    const f = initialForm(attempt, today, mode, event, ev, dv, draft?.draftId ?? null);
+    const f = initialForm(attempt, today, mode, event, ev, dv, draft?.draftId ?? null, baseOf(data));
     if (draft) return { ...f, outcome: draft.reportedOutcome, occurredDate: draft.occurredDateJst, scopeAnswers: draft.scopeAnswers };
     return f;
   });
@@ -116,6 +132,15 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return next;
     });
   };
+  /** 競合を知らせた後は、表示している最新の内容を前提に確定し直せるようにする */
+  const rebase = (r: RunResult<unknown>) => {
+    if (r.outcome.status !== 'CONFLICT' && r.outcome.status !== 'EPOCH_MISMATCH') return;
+    setForm((f) => {
+      const next = { ...f!, base: r.latestBase };
+      formCache.set(formKey(attemptId), next);
+      return next;
+    });
+  };
   const choose = (outcome: RecordForm['outcome']) => {
     if (outcome === 'skip' && mode === 'record') {
       navigate(`/attempts/${encodeURIComponent(attempt.attemptId)}/skip`);
@@ -132,8 +157,13 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const needsScope = mode !== 'correct' && (isPast || form.missedAfterImport || !!attempt.lifecycle.match(/superseded/));
   const historyOnly = (Object.entries(form.scopeAnswers) as [ScopeKey, string][]).filter(([, v]) => v === 'historyOnly').map(([k]) => k);
   const applied = result.deltas.filter((d) => !historyOnly.includes(d.scope));
-  const negative = form.outcome && form.outcome !== 'voided' && mode !== 'correct' ? wouldGoNegative(projection, applied) : [];
-  const ready = form.outcome !== null && missing.length === 0 && result.invalid.length === 0 && negative.length === 0 && attempt.executionGate !== 'predecessorPending';
+  // 下書きを確定するときは、その下書き自身の確保分を除いて判定する（操作層と同じ）
+  const projForCheck = form.draftId ? projectInventory(data.baselines, data.resultEvents, data.drafts.filter((d) => d.draftId !== form.draftId)) : projection;
+  // 過去日・記録漏れは種類ごとの扱い（反映／履歴のみ）を決めてから判定する（S34）
+  const negative = form.outcome && form.outcome !== 'voided' && mode !== 'correct' && !needsScope ? wouldGoNegative(projForCheck, applied) : [];
+  // 確認待ち（対象消失など）の予定は、取り込み前の記録漏れとして装備を履歴だけに記録する場合だけ確定できる（S34 で回答）
+  const reviewBlocked = mode !== 'correct' && attempt.executionGate === 'reviewRequired' && !needsScope && form.outcome !== 'skip';
+  const ready = form.outcome !== null && missing.length === 0 && result.invalid.length === 0 && negative.length === 0 && attempt.executionGate !== 'predecessorPending' && !reviewBlocked;
 
   const submit = async () => {
     if (!form.outcome) return;
@@ -142,12 +172,18 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
-      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: [], reason: form.reason, today, now: new Date().toISOString() }, { commandId });
+      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: [], reason: form.reason, today, now: new Date().toISOString() }, { commandId, base: form.base });
       if (!r.ok) {
+        rebase(r);
         const deps = (r.errors[0]?.details as { dependents?: { eventId: string }[] } | undefined)?.dependents ?? [];
         return setMessage({ text: r.message ?? '保存できませんでした。', details: data.resultEvents.filter((e) => deps.some((d) => d.eventId === e.eventId)) });
       }
       formCache.delete(formKey(attemptId));
+      // 過去日の予定が未実施・スキップに戻った場合は、すぐ翌日処理の対象として再評価する
+      if ((form.outcome === 'voided' || form.outcome === 'skip') && compareDate(attempt.scheduledDate ?? form.occurredDate, today) < 0) {
+        await service.rollover();
+        await refresh();
+      }
       navigate('/history');
       return;
     }
@@ -170,13 +206,14 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
         answeredScopes: [],
         eventId,
         recipeSnapshot: recipeSnapshotFor(master, attempt, ctx),
-        inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas),
+        inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
         now: new Date().toISOString(),
       },
-      { commandId },
+      { commandId, base: form.base },
     );
     if (!r.ok) {
+      rebase(r);
       if (r.errors[0]?.code === 'SUCCESSOR_HAS_RESULT') {
         navigate(`/history/rollover/${encodeURIComponent(attempt.attemptId)}`);
         return;
@@ -280,6 +317,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
             <p className="rec-warn-main">実際に行った結果と消費数を確認します。</p>
             <p className="rec-warn-sub">消費が不明なら「実施済み・確認待ち」で保存できます。</p>
             {attempt.executionGate === 'predecessorPending' ? <p className="rec-warn-sub">前の工程の結果が確定していないため、この工程の結果はまだ確定できません。</p> : null}
+            {reviewBlocked ? <p className="rec-warn-sub">この予定は所持データとの確認待ちです。取り込み前に実施した記録漏れなら下のチェックを付け、装備を履歴のみとして記録してください。</p> : null}
             {negative.length > 0 ? <p className="rec-warn-sub">記録すると所持数が負になる項目があります（{negative.map((s) => costKeyPlain(master, s)).join('・')}）。所持データが最新か確認してください。</p> : null}
             {result.invalid.length > 0 ? <p className="rec-warn-sub">数量は0以上の整数で入力してください（{result.invalid.join('・')}）。</p> : null}
           </div>
@@ -358,7 +396,7 @@ function outcomeText(o: string): string {
 
 export function DraftConfirmPage() {
   const { attemptId = '' } = useParams();
-  const { data, master, today, projection, formCache, run, busy } = useStore();
+  const { data, master, today, formCache, run, busy } = useStore();
   const navigate = useNavigate();
   const ctx = useAttemptContext(attemptId);
   const form = formCache.get(formKey(attemptId)) as RecordForm | undefined;
@@ -366,7 +404,7 @@ export function DraftConfirmPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [draftId] = useState(() => form?.draftId ?? newId('draft'));
   const commandId = useCommandId(attemptId, checked);
-  const rows = useMemo(() => consumptionRows(master, ctx.planned, projection), [master, ctx.planned, projection]);
+  const rows = useConsumptionRows(ctx, draftConsumptions(data, form?.draftId ?? null));
   if (!ctx.attempt || !form || (form.outcome !== 'success' && form.outcome !== 'failure')) {
     return (
       <Page nav="history" title="実施済み・消費確認待ち" top={196}>
@@ -386,9 +424,12 @@ export function DraftConfirmPage() {
       'SaveDraftResult',
       handleSaveDraft,
       { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: recipeSnapshotFor(master, attempt, ctx), now: new Date().toISOString() },
-      { commandId },
+      { commandId, base: form.base },
     );
-    if (!res.ok) return setMessage(res.message);
+    if (!res.ok) {
+      if (res.outcome.status === 'CONFLICT' || res.outcome.status === 'EPOCH_MISMATCH') formCache.set(formKey(attemptId), { ...form, base: res.latestBase });
+      return setMessage(res.message);
+    }
     formCache.delete(formKey(attemptId));
     navigate('/history?tab=drafts');
   };
@@ -411,7 +452,8 @@ export function DraftConfirmPage() {
             .filter((x) => x.primary)
             .map((x) => {
               const v = parseCount(form.values[x.key]);
-              return `${x.label}：${v === null || Number.isNaN(v) ? '確認待ち' : `${v}個`}`;
+              const label = x.kind === 'equipment' && rows.filter((y) => y.kind === 'equipment' && y.id === x.id).length > 1 ? `${x.label}★${form.stars[x.key] ?? x.star}` : x.label;
+              return `${label}：${v === null || Number.isNaN(v) ? '確認待ち' : `${v}個`}`;
             })
             .join('　　')}
         </p>
@@ -478,7 +520,7 @@ export function PastRecordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [eventId] = useState(() => newId('ev'));
   const commandId = useCommandId(attemptId, answers);
-  const rows = useMemo(() => consumptionRows(master, ctx.planned, projection), [master, ctx.planned, projection]);
+  const rows = useConsumptionRows(ctx, draftConsumptions(data, cached?.draftId ?? null));
   if (!ctx.attempt || !cached || (cached.outcome !== 'success' && cached.outcome !== 'failure')) {
     return (
       <Page nav="history" title="過去の実績と所持数への反映" top={196}>
@@ -498,6 +540,12 @@ export function PastRecordPage() {
   const scopes = [...scopesOfDeltas(result.deltas)].sort((a, b) => scopeOrder(a) - scopeOrder(b) || a.localeCompare(b));
   const fixed = fixedHistoryOnlyScopes({ originalSequence: data.meta.nextSequence, fromDraftId: form.draftId }, scopes, data.baselines);
   const unanswered = scopes.filter((s) => !fixed.includes(s) && !answers[s]);
+  // 確認待ちの予定は、装備を履歴だけに記録する場合だけ確定できる（操作層の REVIEW_REQUIRED と同じ条件）
+  const reviewBlocked = attempt.executionGate === 'reviewRequired' && scopes.includes('equipment') && !fixed.includes('equipment') && answers.equipment === 'apply';
+  // 所持数に反映する種類だけで、既知の所持数が負にならないか確かめる（下書きの確定では自身の確保分を除く）
+  const projForCheck = form.draftId ? projectInventory(data.baselines, data.resultEvents, data.drafts.filter((d) => d.draftId !== form.draftId)) : projection;
+  const negative = unanswered.length === 0 ? wouldGoNegative(projForCheck, result.deltas.filter((d) => answers[d.scope] === 'apply' && !fixed.includes(d.scope))) : [];
+  const confirmable = unanswered.length === 0 && !reviewBlocked && negative.length === 0;
   const valueAfter = (s: ScopeKey): string => {
     if (answers[s] !== 'apply') {
       if (answers[s] !== 'historyOnly' && !fixed.includes(s)) return '回答後に表示';
@@ -538,13 +586,14 @@ export function PastRecordPage() {
         answeredScopes: scopes.filter((s) => answers[s]),
         eventId,
         recipeSnapshot: recipeSnapshotFor(master, attempt, ctx),
-        inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas),
+        inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
         now: new Date().toISOString(),
       },
-      { commandId },
+      { commandId, base: form.base },
     );
     if (!r.ok) {
+      if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') formCache.set(formKey(attemptId), { ...form, base: r.latestBase, scopeAnswers: answers });
       if (r.errors[0]?.code === 'SUCCESSOR_HAS_RESULT') return navigate(`/history/rollover/${encodeURIComponent(attemptId)}`);
       return setMessage(r.message);
     }
@@ -609,6 +658,16 @@ export function PastRecordPage() {
             <p className="past-warn-main">{unanswered.map(scopeName).join('・')}の扱いを選んでください。未回答のまま実績を確定できません。</p>
             <p className="past-warn-sub">分からない場合は「実施済み・確認待ち」で残せます。</p>
           </div>
+        ) : reviewBlocked ? (
+          <div className="banner banner-warn past-warn" role="alert">
+            <p className="past-warn-main">この予定は所持データとの確認待ちのため、装備は「履歴だけに記録」を選んでください。</p>
+            <p className="past-warn-sub">取り込み後に実施した場合は、所持データを取り込み直してから計画を確認してください。</p>
+          </div>
+        ) : negative.length > 0 ? (
+          <div className="banner banner-warn past-warn" role="alert">
+            <p className="past-warn-main">所持数に反映すると負になる種類があります（{negative.map(scopeName).join('・')}）。</p>
+            <p className="past-warn-sub">取り込んだ所持データに今回の実績が含まれている場合は「履歴だけに記録」を選んでください。</p>
+          </div>
         ) : null}
         <p className="past-note text-sub">取込日時は参考情報です。今回の実績が取り込み内容に含まれるかで判断します。</p>
       </section>
@@ -621,8 +680,8 @@ export function PastRecordPage() {
           実施済み・確認待ちへ
         </button>
         <span className="spacer" />
-        <button type="button" className={`btn ${unanswered.length === 0 ? 'btn-primary' : ''}`} style={{ width: 300 }} disabled={unanswered.length > 0 || busy} onClick={() => void confirm()}>
-          {unanswered.length > 0 ? '未回答のため確定不可' : 'この内容で確定'}
+        <button type="button" className={`btn ${confirmable ? 'btn-primary' : ''}`} style={{ width: 300 }} disabled={!confirmable || busy} onClick={() => void confirm()}>
+          {unanswered.length > 0 ? '未回答のため確定不可' : reviewBlocked ? '確認待ちのため確定不可' : negative.length > 0 ? '所持数を確認してください' : 'この内容で確定'}
         </button>
       </div>
     </Page>
