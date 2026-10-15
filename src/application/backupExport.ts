@@ -24,6 +24,11 @@ export function buildBackup(data: AppData, masterVersion: string | null, appVers
   };
 }
 
+/** 書き出すマスターの版。確認待ちの間は保存されている版（参照なしなら null）のまま書き出し、復元時に再び保留にする */
+export function backupMasterVersion(meta: Pick<AppData['meta'], 'activeMasterVersion' | 'masterReviewRequired'>, bundledVersion: string): string | null {
+  return meta.masterReviewRequired ? meta.activeMasterVersion : (meta.activeMasterVersion ?? bundledVersion);
+}
+
 export function exportBackup(data: AppData, masterVersion: string | null, appVersion: string, createdAt: string): string {
   return JSON.stringify(buildBackup(data, masterVersion, appVersion, createdAt), null, 1);
 }

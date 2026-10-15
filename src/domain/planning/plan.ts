@@ -635,6 +635,23 @@ export function buildPlan(input: PlanInput): PlanResult {
     });
     if (pending) p.executionGate = 'predecessorPending';
   }
+  // 今日の前の工程が確認待ち・前提待ちなら、今日の後続も前提待ち（鎖の先まで伝える）
+  for (let changed = true, guard = 0; changed && guard <= placements.length; guard++) {
+    changed = false;
+    for (const p of placements) {
+      if (p.date !== today || p.executionGate !== 'ready') continue;
+      const s = stepByKey.get(p.stepKey);
+      if (!s) continue;
+      const blocked = s.predecessorKeys.some((k) => {
+        const pp = placementByKey.get(k);
+        return !!pp && pp.date === today && (pp.executionGate === 'reviewRequired' || pp.executionGate === 'predecessorPending');
+      });
+      if (blocked) {
+        p.executionGate = 'predecessorPending';
+        changed = true;
+      }
+    }
+  }
 
   // 仮想在庫：日付・日内順に実在庫から費用を減算する（実在庫は変更しない）
   const balances = new Map<CostKey, number | null>();

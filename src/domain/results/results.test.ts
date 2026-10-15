@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Baseline, ResultEvent } from '../model';
-import { buildDeltas, dependentsOf, fixedHistoryOnlyScopes, scopesOfDeltas, validateCorrection, wouldGoNegative } from './results';
+import { buildDeltas, dependentsOf, fixedHistoryOnlyScopes, inferInputSources, scopesOfDeltas, validateCorrection, wouldGoNegative } from './results';
 import { projectInventory } from '../inventory/projection';
 import { baselinesFrom } from '../../test-support/planFixtures';
 
@@ -82,6 +82,21 @@ describe('実績の増減', () => {
     // その下書き自身を確定するときは、自分の確保分を除いた投影で判定する
     const self = projectInventory(baselinesFrom({ equipment: [[2, 0, 1]], resources: { 8: 5 } }), [], []);
     expect(wouldGoNegative(self, [{ scope: 'resource:8', amount: -4 }])).toEqual([]);
+  });
+});
+
+describe('入力元の推定', () => {
+  it('前の工程の成功は、後続の失敗では使い切らない（失敗は改修対象を変えないので、再挑戦の成功も同じ成功を入力元にする）', () => {
+    const t56 = { kind: 'improve' as const, equipmentId: 1, fromStar: 5, toStar: 6 };
+    const t67 = { kind: 'improve' as const, equipmentId: 1, fromStar: 6, toStar: 7 };
+    const snap = (transition: typeof t56) => ({ masterVersion: 'm', transition, fromName: '', toName: '', mode: 'normal' as const, entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null });
+    const a = ev('A', 1, { stepKey: 'g|1:5>6|0', recipeSnapshot: snap(t56), occurredDateJst: '2026-10-12' });
+    const bFail = ev('B', 2, { stepKey: 'g|1:6>7|0', outcome: 'failure', recipeSnapshot: snap(t67), inputSourceEventIds: ['A'], occurredDateJst: '2026-10-13' });
+    const retry = { attemptId: 'g|1:6>7|0@2', stepKey: 'g|1:6>7|0', goalId: 'g', transition: t67, scheduledDate: '2026-10-14', dayOrder: 1, outcome: 'none' as const, lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: null, cancelReason: null };
+    expect(inferInputSources([a, bFail], retry, [], { date: '2026-10-14', order: 1 })).toEqual(['A']);
+    // 成功した後続があれば、その成功が使ったものとして再び入力元にしない
+    const bSuccess = { ...bFail, outcome: 'success' as const };
+    expect(inferInputSources([a, bSuccess], retry, [], { date: '2026-10-14', order: 1 })).toEqual([]);
   });
 });
 

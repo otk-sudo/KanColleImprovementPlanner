@@ -145,6 +145,34 @@ test('A07：過去日の記録を「実施していなかった」へ訂正す�
   expect(active[0]!.scheduledDate).toBe('2026-10-16');
 });
 
+test('A09：数量に不正な値があるうちは、確認待ちとしても保存しない（不明な消費として扱いを失わない）', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await page.goto('/#/calendar');
+  await page.getByRole('link', { name: '結果を記録' }).first().click();
+  await page.getByRole('radio', { name: '失敗' }).click();
+  await page.getByLabel('改修資材').fill('1.5');
+  await expect(page.getByRole('button', { name: '実施済み・確認待ち' })).toBeDisabled();
+  await page.getByLabel('改修資材').fill('1');
+  await expect(page.getByRole('button', { name: '実施済み・確認待ち' })).toBeEnabled();
+});
+
+test('A09：訂正で、所持数に反映した種類を「履歴だけ」へ変えられる（取り込みに含まれていた消費を二重に引かない）', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await recordToday(page, '成功');
+  const ev = (await state(page)).resultEvents[0]!;
+  await page.goto(`/#/history/events/${encodeURIComponent(ev.eventId)}/correct`);
+  await expect(page.getByLabel('改修資材を履歴だけに記録')).not.toBeChecked();
+  await page.getByLabel('改修資材を履歴だけに記録').check();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  await page.getByRole('button', { name: 'この内容で訂正' }).click();
+  await page.waitForURL(/#\/history$/);
+  expect((await state(page)).resultEvents[0]!.historyOnlyScopes).toEqual(['resource:8']);
+  await page.goto('/#/inventory/items');
+  await expect(page.getByRole('row', { name: /改修資材（ネジ）/ })).toContainText('10');
+});
+
 test('A09：訂正画面で別の記録へ移ったら、その記録の内容でフォームを作り直す', async ({ page }) => {
   await start(page, { data: { ...seed, settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }, route: '/goals' });
   await addGoal(page, '主砲A', 7);
@@ -155,10 +183,10 @@ test('A09：訂正画面で別の記録へ移ったら、その記録の内容�
   const [first, second] = [...d.resultEvents].sort((a, b) => a.originalSequence - b.originalSequence);
   expect([devmats(first!.eventId), devmats(second!.eventId)]).toEqual([4, 2]);
   await page.goto(`/#/history/events/${encodeURIComponent(first!.eventId)}/correct`);
-  await expect(page.getByLabel('開発資材')).toHaveValue('4');
+  await expect(page.getByLabel('開発資材', { exact: true })).toHaveValue('4');
   // 同じ画面のまま別の記録の訂正へ移る（依存する記録へのリンクと同じ）
   await page.goto(`/#/history/events/${encodeURIComponent(second!.eventId)}/correct`);
-  await expect(page.getByLabel('開発資材')).toHaveValue('2');
+  await expect(page.getByLabel('開発資材', { exact: true })).toHaveValue('2');
 });
 
 test('A07：訂正後の日付変更の処理を保存できなければ、警告と再試行を出して移動先に残す', async ({ page }) => {

@@ -243,6 +243,7 @@ function invalidAmount(deltas: Delta[]): boolean {
   return deltas.some((d) => !Number.isSafeInteger(d.amount) || Math.abs(d.amount) > MAX_RECORD_AMOUNT);
 }
 const MASTER_REVIEW_MESSAGE = '共通マスターの更新を確認するまで、改修結果は記録できません。設定の「共通マスター」で確認してから記録してください。';
+const PLAN_NOT_SAVED_MESSAGE = '予定の再計算がまだ保存されていません。少し待ってから、または画面を開き直してから記録してください。';
 const INVALID_AMOUNT_MESSAGE = `消費数は0〜${MAX_RECORD_AMOUNT.toLocaleString('ja-JP')}の整数で入力してください。`;
 
 /**
@@ -290,6 +291,8 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   if (invalidAmount(p.deltas)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
   // マスター更新の確認待ちの間は、承認していないマスターの条件で結果を保存しない
   if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
+  // 予定の再計算が保存されていない間は、保存済みの実行可否が古い可能性があるので記録しない
+  if (data.meta.planDirty) return fail('PLAN_NOT_SAVED', PLAN_NOT_SAVED_MESSAGE);
   // 下書きの確定は日付が変わっても前提待ちを確認する
   if (attempt.executionGate === 'predecessorPending' && p.outcome !== 'skip' && (attempt.scheduledDate === p.today || p.fromDraftId !== null)) return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程の結果は確定できません。');
 
@@ -418,6 +421,7 @@ export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResu
   const target = data.attempts.find((a) => a.attemptId === p.attemptId);
   if (target?.lifecycle === 'cancelled') return fail('ATTEMPT_CANCELLED', '取り消された予定には記録できません。');
   if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
+  if (data.meta.planDirty) return fail('PLAN_NOT_SAVED', PLAN_NOT_SAVED_MESSAGE);
   const attempt = data.attempts.find((a) => a.attemptId === p.attemptId);
   if (!attempt) return fail('ATTEMPT_NOT_FOUND', '対象の予定が見つかりません。');
   if (attempt.outcome !== 'none' && attempt.outcome !== 'draft') return fail('ALREADY_RECORDED', 'この予定には既に結果が記録されています。');
@@ -539,7 +543,12 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
     history: [...e.history, { ...prev, reason: p.reason || null }],
   };
   const attempts: Attempt[] = [];
-  if (attempt) attempts.push({ ...attempt, outcome: p.newOutcome === 'voided' ? 'none' : p.newOutcome, resultEventId: p.newOutcome === 'voided' ? null : e.eventId });
+  // 未実施へ訂正した予定は、目標を削除済みなら取り消す（予定にも翌日処理にも載らない予定を残さない）
+  const goalGone = attempt !== undefined && !data.goals.some((g) => g.goalId === attempt.goalId);
+  if (attempt) {
+    const reopened = { ...attempt, outcome: p.newOutcome === 'voided' ? ('none' as const) : p.newOutcome, resultEventId: p.newOutcome === 'voided' ? null : e.eventId };
+    attempts.push(p.newOutcome === 'voided' && goalGone ? { ...reopened, lifecycle: 'cancelled' as const, cancelReason: '目標を削除しました' } : reopened);
+  }
   // 成功へ訂正すると同じ工程の再挑戦・繰越の後継は不要になる。記録のときと同じく、結果のない後継は取り消し、
   // 結果のある後継があれば自動で取り消さず保存しない（同じ工程の成功と後継の結果を二重に持たない）
   if (attempt && p.newOutcome === 'success' && e.outcome !== 'success') {
@@ -558,8 +567,12 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
 // ---------------- 同日再挑戦・担当艦の希望 ----------------
 export function handleSameDayRetry(data: AppData, p: { stepKey: string; attemptId: string; today: DateJst; limit: number; now: string }): HandlerResult<{ attemptId: string }> {
   const list = data.attempts.filter((a) => a.stepKey === p.stepKey).sort((a, b) => seqOf(a) - seqOf(b));
-  const latest = list.at(-1);
-  if (!latest || latest.outcome !== 'failure' || latest.scheduledDate !== p.today) return fail('NOT_FAILED_TODAY', '同日の再挑戦は、今日失敗した工程にだけ追加できます。');
+  // 取り消された試行（訂正で不要になった再挑戦など）は飛ばし、取り消していない最新の試行が今日実施した失敗かを見る（予定日ではなく実施日）
+  const latest = [...list].reverse().find((a) => a.lifecycle !== 'cancelled');
+  const latestEvent = latest?.resultEventId ? data.resultEvents.find((e) => e.eventId === latest.resultEventId && e.status === 'active') : undefined;
+  const failedOn = latestEvent ? latestEvent.occurredDateJst : latest?.scheduledDate;
+  if (!latest || latest.outcome !== 'failure' || failedOn !== p.today) return fail('NOT_FAILED_TODAY', '同日の再挑戦は、今日失敗した工程にだけ追加できます。');
+  if (data.attempts.some((a) => a.attemptId === p.attemptId)) return fail('ATTEMPT_EXISTS', '再挑戦は既に追加されています。');
   // 一日分をスキップした日には、新しい予定（再挑戦）を追加しない
   if (data.daySkips.some((d) => d.date === p.today)) return fail('DAY_SKIPPED', 'この日はスキップしたため、再挑戦を追加できません。翌日以降に予定を配置します。');
   // 目標を削除した工程の失敗は履歴として残すだけで、再挑戦は作らない

@@ -390,6 +390,18 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
   });
 
+  it('今日の前の工程が確認待ちになったら、今日の後続も前提待ちにする', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const t12 = { kind: 'improve' as const, equipmentId: 1, fromStar: 1, toStar: 2 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 2, count: 1 });
+    const a = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', dayOrder: 1, helperShipId: 101 });
+    const b = attempt({ attemptId: 'g|1:1>2|0@1', stepKey: 'g|1:1>2|0', goalId: 'g', transition: t12, scheduledDate: '2026-10-14', dayOrder: 2, helperShipId: 101 });
+    // 前の工程だけ、担当艦の指定を条件に合わない艦へ変えた（確認待ち）
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [a, b], preferredHelpers: [{ stepKey: a.stepKey, shipId: 100 }], settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }));
+    expect(plan.placements.find((p) => p.attemptId === a.attemptId)?.executionGate).toBe('reviewRequired');
+    expect(plan.placements.find((p) => p.attemptId === b.attemptId)?.executionGate).toBe('predecessorPending');
+  });
+
   it('取り消された再挑戦の後ろでも、元の失敗が工程の番号を保ち続ける（同じ工程を別のキーで作り直さない）', () => {
     const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });

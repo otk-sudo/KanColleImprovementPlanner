@@ -24,7 +24,7 @@ import {
   type RecordResultPayload,
 } from './commands';
 import { parseBackup } from '../domain/backup';
-import { exportBackup } from './backupExport';
+import { backupMasterVersion, exportBackup } from './backupExport';
 
 const m = buildMasterIndex(fixtureMaster());
 let seq = 0;
@@ -624,6 +624,42 @@ describe('レビュー指摘（PR #1）', () => {
     if (!without.ok) expect(without.errors[0]?.code).toBe('REVIEW_REQUIRED');
   });
 
+  it('目標を削除した後に記録を「実施していなかった」へ訂正すると、その予定は取り消す', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const rec = await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }] });
+    await s.run('RecordResult', handleRecordResult, rec, await base(s));
+    const d = await s.load();
+    const r = handleCorrectResult({ ...d, goals: [] }, { eventId: rec.eventId, newOutcome: 'voided', newDeltas: [], occurredDateJst: s.today(), historyOnlyScopes: [], reason: '取り違え', today: s.today(), now: '' });
+    expect(r.ok && r.writes.put?.attempts?.[0]).toMatchObject({ attemptId: a.attemptId, lifecycle: 'cancelled', outcome: 'none' });
+  });
+
+  it('同日の再挑戦は、取り消していない最新の試行が今日実施した失敗なら追加できる（予定日が別の日でも、取り消した再挑戦があっても）', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    // 昨日の予定を今日実施して失敗、その後の再挑戦は訂正で取り消された状態
+    const failed = { ...a, scheduledDate: '2026-10-13', outcome: 'failure' as const, resultEventId: 'ef', lifecycle: 'superseded' as const };
+    const cancelledRetry = { ...a, attemptId: `${a.stepKey}@2`, scheduledDate: s.today(), outcome: 'none' as const, lifecycle: 'cancelled' as const, resultEventId: null };
+    const ev: ResultEvent = { eventId: 'ef', attemptId: a.attemptId, stepKey: a.stepKey, goalId: 'g1', originalSequence: 9, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: s.today(), occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const data = { ...d0, attempts: [failed, cancelledRetry], resultEvents: [ev] };
+    expect(handleSameDayRetry(data, { stepKey: a.stepKey, attemptId: `${a.stepKey}@3`, today: s.today(), limit: 2, now: '' }).ok).toBe(true);
+  });
+
+  it('予定の再計算が保存されていない間は、結果も確認待ちも保存しない（古い実行可否で記録しない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const dirty = { ...d0, meta: { ...d0.meta, planDirty: true } };
+    const r = handleRecordResult(dirty, await recordPayload(s, a.attemptId, 'failure'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('PLAN_NOT_SAVED');
+    expect(handleSaveDraft(dirty, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [], unknownScopes: ['resource:8'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' }).ok).toBe(false);
+  });
+
   it('取り消された予定は、確認待ちとしても保存しない', async () => {
     const s = await service();
     await seedPlan(s);
@@ -806,6 +842,23 @@ describe('保護・復元', () => {
     // 保存できれば計算保留になる
     await s2.init();
     expect((await s2.load()).meta.masterReviewRequired).toBe(true);
+  });
+
+  it('マスターの参照がないバックアップを復元したら、確認するまで起動し直しても書き出しても参照なしのまま', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const json = exportBackup(await s.load(), null, '0.1.0', s.nowIso());
+    const parsed = parseBackup(json, m.version);
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.masterMissing).toBe(true);
+    expect((await s.run('RestoreBackup', handleRestore, { backup: parsed.backup, newEpoch: 'e2', masterMissing: true, confirmedPlanHold: true, nowMs: clockMs, now: s.nowIso() }, await base(s))).status).toBe('APPLIED');
+    // 起動し直しても、同梱のマスターの版で上書きしない
+    await new AppService(db, m, clock).init();
+    const d = await s.load();
+    expect([d.meta.activeMasterVersion, d.meta.masterReviewRequired]).toEqual([null, true]);
+    // 書き出したバックアップも参照なし（復元時に再び保留になる）
+    expect(backupMasterVersion(d.meta, m.version)).toBeNull();
+    expect(backupMasterVersion({ ...d.meta, activeMasterVersion: 'v1', masterReviewRequired: false }, m.version)).toBe('v1');
   });
 
   it('P30：新しいマスターで過去実績のレシピが消えても実績は残り、将来の予定は確認待ちにする', async () => {

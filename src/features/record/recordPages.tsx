@@ -245,7 +245,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const oldDeltas = mode === 'correct' && event && event.status === 'active' ? event.deltas.filter((d) => !event.historyOnlyScopes.includes(d.scope)) : [];
   const newDeltas = form.outcome === 'voided' ? [] : result.deltas;
   const fixedScopes = mode === 'correct' && event ? fixedHistoryOnlyScopes(event, scopesOfDeltas([...event.deltas, ...newDeltas]), data.baselines) : [];
-  const editableHistoryOnly = mode === 'correct' && event ? event.historyOnlyScopes.filter((sc) => !fixedScopes.includes(sc)) : [];
+  // 訂正では、取り込みの境界で固定されていない種類の「履歴だけ」を、どちら向きにも変えられる
+  const editableHistoryOnly = mode === 'correct' && event ? [...scopesOfDeltas([...event.deltas, ...newDeltas])].filter((sc) => !fixedScopes.includes(sc)).sort((a, b) => scopeOrder(a) - scopeOrder(b) || a.localeCompare(b)) : [];
   const effect = correctionEffect({ newDeltas, oldDeltas, fixedScopes }, from.equipmentId, from.star, to.equipmentId, to.star);
   return (
     <Page nav={mode === 'correct' ? 'history' : 'calendar'} top={196} title={title} sub={mode === 'correct' ? '保存済みの結果を訂正します。訂正前の内容は履歴に残ります。' : '実際にゲームで行った結果を記録します。'}>
@@ -314,7 +315,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
               </label>
               <input id="rec-reason" className="input" value={form.reason} onChange={(e) => update({ reason: e.target.value })} placeholder="例：失敗を成功と取り違えた" />
               {editableHistoryOnly.length > 0 ? (
-                // 記録したときに「履歴だけ」にした種類（取り込みの境界で固定されたものを除く）は、訂正で所持数に反映する扱いへ変えられる
+                // チェックした種類は所持数に反映しない（記録したときの扱いを初期値にする）
                 <fieldset className="rec-history-only">
                   <legend className="field-label">所持数に反映しない種類（履歴だけ）</legend>
                   {editableHistoryOnly.map((sc) => (
@@ -351,7 +352,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
               キャンセル
             </Link>
             {mode !== 'correct' && form.outcome !== 'skip' ? (
-              <button type="button" className="btn" style={{ width: 260 }} disabled={attempt.executionGate === 'predecessorPending' || (attempt.executionGate === 'reviewRequired' && form.scopeAnswers.equipment !== 'historyOnly')} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
+              <button type="button" className="btn" style={{ width: 260 }} disabled={attempt.executionGate === 'predecessorPending' || (attempt.executionGate === 'reviewRequired' && form.scopeAnswers.equipment !== 'historyOnly') || result.invalid.length > 0} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
                 実施済み・確認待ち
               </button>
             ) : (
@@ -455,6 +456,11 @@ export function DraftConfirmPage() {
         <div className="banner banner-warn page-alert" role="alert">
           {message}
         </div>
+      ) : r.invalid.length > 0 ? (
+        // 不正な数量の行は、既知の消費にも不明な消費にも入らないため、直すまで保存しない
+        <div className="banner banner-warn page-alert" role="alert">
+          数量は0〜999,999の整数で入力してください（{r.invalid.join('・')}）。入力へ戻って直すまで保存できません。
+        </div>
       ) : null}
       <section className="card draft-card" aria-labelledby="draft-title">
         <h2 className="card-title" id="draft-title">
@@ -506,7 +512,7 @@ export function DraftConfirmPage() {
             未実施だった場合の訂正
           </Link>
         )}
-        <button type="button" className={`btn ${checked ? 'btn-primary' : ''}`} style={{ width: 320 }} disabled={!checked || busy} onClick={() => void save()}>
+        <button type="button" className={`btn ${checked && r.invalid.length === 0 ? 'btn-primary' : ''}`} style={{ width: 320 }} disabled={!checked || busy || r.invalid.length > 0} onClick={() => void save()}>
           実施済み・確認待ちで保存
         </button>
       </div>

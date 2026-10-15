@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { Page } from '../../app/Shell';
 import { useCommandId, useStore } from '../../app/store';
 import { handleAddHoliday, handleApplyMaster, handleRemoveHoliday, handleRestore, handleSaveSettings } from '../../application/commands';
-import { backupFileName, exportBackup } from '../../application/backupExport';
+import { backupFileName, backupMasterVersion, exportBackup } from '../../application/backupExport';
 import { readBackupFile, summarizeBackup, type BackupCheck } from '../../domain/backup';
 import { formatJstDateTime, formatSlashDate, isValidDate, WEEKDAY_LABELS } from '../../domain/jst';
 import { transitionOptions } from '../../domain/master';
@@ -78,7 +78,7 @@ export function SettingsPage() {
   };
   const exportNow = () => {
     const now = new Date().toISOString();
-    download(backupFileName(now), exportBackup(data, data.meta.activeMasterVersion ?? master.version, __APP_VERSION__, now));
+    download(backupFileName(now), exportBackup(data, backupMasterVersion(data.meta, master.version), __APP_VERSION__, now));
   };
   return (
     <Page nav="settings" title="予定と保存の設定" top={195} sub="改修できる曜日・回数と、お休みの日を設定します。">
@@ -254,7 +254,7 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   };
   const preSave = () => {
     const now = new Date().toISOString();
-    download(`before-restore-${backupFileName(now)}`, exportBackup(data, data.meta.activeMasterVersion ?? master.version, __APP_VERSION__, now));
+    download(`before-restore-${backupFileName(now)}`, exportBackup(data, backupMasterVersion(data.meta, master.version), __APP_VERSION__, now));
     setPreSaved(true);
     if (session) formCache.set('restore', { ...session, preSaved: true });
   };

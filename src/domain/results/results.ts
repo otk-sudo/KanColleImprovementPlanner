@@ -131,8 +131,25 @@ export function inferInputSources(events: ResultEvent[], attempt: Attempt, delta
   // この実施より前に起きた成功だけを入力元の候補にする（日付が逆向きの依存を作らない）
   const before = (e: ResultEvent) => happenedBefore({ date: e.occurredDateJst, order: e.occurredOrder }, at);
   const active = events.filter((e) => e.status === 'active' && e.outcome === 'success' && e.goalId === attempt.goalId && e.recipeSnapshot && before(e));
+  const byId = new Map(events.map((e) => [e.eventId, e]));
+  // 入力元を使い切ったか。改修対象（前の工程の出力）は成功でだけ変わるので、失敗・スキップは前の工程の成功を使い切らない
+  // （素材の製作品は失敗でも消費しうるので、製作品の対応は結果によらず使い切りとする）
+  const isTargetLink = (consumer: ResultEvent, source: ResultEvent | undefined): boolean => {
+    const ct = consumer.recipeSnapshot?.transition;
+    const st = source?.recipeSnapshot?.transition;
+    if (!ct || !st) return false;
+    const to = transitionTo(st);
+    const from = transitionFrom(ct);
+    return to.equipmentId === from.equipmentId && to.star === from.star;
+  };
   const consumedBy = new Map<string, number>();
-  for (const e of events) if (e.status === 'active') for (const s of e.inputSourceEventIds) consumedBy.set(s, (consumedBy.get(s) ?? 0) + 1);
+  for (const e of events) {
+    if (e.status !== 'active') continue;
+    for (const s of e.inputSourceEventIds) {
+      if (e.outcome !== 'success' && isTargetLink(e, byId.get(s))) continue;
+      consumedBy.set(s, (consumedBy.get(s) ?? 0) + 1);
+    }
+  }
   const out: string[] = [];
   const producer = active
     .filter((e) => {

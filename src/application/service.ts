@@ -44,6 +44,8 @@ export class AppService {
         this.db,
         data.meta.revision,
         (fresh) => {
+          // 既に計算を保留している（マスターの参照がない復元を含む）なら、利用者が確認するまで版を変えない
+          if (fresh.meta.masterReviewRequired) return null;
           const hasPlans = fresh.goals.length > 0 || fresh.attempts.length > 0;
           return {
             meta: hasPlans && fresh.meta.activeMasterVersion !== null ? { masterReviewRequired: true } : { activeMasterVersion: this.master.version, masterReviewRequired: fresh.meta.masterReviewRequired, planDirty: true },
