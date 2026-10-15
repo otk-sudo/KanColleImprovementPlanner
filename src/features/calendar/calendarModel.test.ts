@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '../../domain/model';
 import type { Placement, PlanResult } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { attempt } from '../../test-support/planFixtures';
-import { buildDays } from './calendarModel';
+import { buildDays, latestAttemptOf } from './calendarModel';
 
 const t = (from: number) => ({ kind: 'improve' as const, equipmentId: 1, fromStar: from, toStar: from + 1 });
 
@@ -49,5 +49,13 @@ describe('カレンダーの件数（design/17）', () => {
     const days = buildDays(data([skipped]), null, '2026-10-14', '2026-10-14', '2026-10-14');
     const today = days.get('2026-10-14')!;
     expect([today.doneCount, today.plannedCount, today.skipCount]).toEqual([0, 0, 1]);
+  });
+});
+
+describe('前提工程の最新の試行（S30）', () => {
+  it('試行が10回以上でも番号の数値で最新を選ぶ（@9 より @10 が新しい）', () => {
+    const list = [1, 2, 9, 10].map((n) => attempt({ attemptId: `s@${n}`, stepKey: 's', goalId: 'g', transition: t(0), outcome: n === 10 ? 'success' : 'failure' }));
+    expect(latestAttemptOf(list, 's')?.attemptId).toBe('s@10');
+    expect(latestAttemptOf(list, 'other')).toBeUndefined();
   });
 });

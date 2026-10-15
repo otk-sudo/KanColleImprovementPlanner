@@ -4,7 +4,7 @@ import { fixtureMaster, FX } from '../../test-support/fixtureMaster';
 import { baselinesFrom } from '../../test-support/planFixtures';
 import { projectInventory } from '../inventory/projection';
 import type { Protection, ResultEvent } from '../model';
-import { applyImport, buildImportPreview, protectionChangePreview } from './apply';
+import { applyImport, buildImportPreview, previewSourceByScope, protectionChangePreview } from './apply';
 import { parseImportText } from './parse';
 
 const m = buildMasterIndex(fixtureMaster());
@@ -89,6 +89,20 @@ describe('取り込みの反映', () => {
     expect(b.includedThroughSequence).toBe(1);
     expect(projectInventory(r.baselines, [screwEvent], []).resources.get(8)?.value).toBe(10);
     expect(r.changedScopes).toEqual(['resource:8']);
+  });
+
+  it('複数の入力を反映すると、scope ごとに採用した入力の種類とハッシュを基準に記録する（競合で2つ目を選んだ場合も）', () => {
+    const equip = parsed(`[{"id":${FX.mainGunA},"lv":6}]`);
+    const a = parsed('[{"api_id":8,"api_value":15}]');
+    const b = parsed('[{"api_id":8,"api_value":20}]');
+    const preview = buildImportPreview([equip, a, b], { 'resource:8': 2 }, projectInventory([], [], []), [], [], m);
+    const sources = [equip, a, b].map((x) => ({ kind: x.kind, inputHash: x.inputHash, capturedAt: null }));
+    const r = applyImport({ baselines: [], protections: [], updates: preview.updates, sources, sourceByScope: previewSourceByScope(preview), now: '2026-10-14T03:00:00.000Z', snapshotId: 'snap', maxSequence: 0, openDraftIds: [] });
+    const screws = r.baselines.find((x) => x.scope === 'resource:8')!;
+    expect(screws.value).toBe(20);
+    expect([screws.sourceKind, screws.inputHash]).toEqual([b.kind, b.inputHash]);
+    const eq = r.baselines.find((x) => x.scope === 'equipment')!;
+    expect([eq.sourceKind, eq.inputHash]).toEqual([equip.kind, equip.inputHash]);
   });
 
   it('P58：更新対象がない入力は基準も境界も変えない', () => {

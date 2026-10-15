@@ -1,8 +1,7 @@
 import { computeRollover } from '../domain/rollover';
-import { compareDate, todayJst, type DateJst } from '../domain/jst';
+import { todayJst, type DateJst } from '../domain/jst';
 import type { MasterIndex } from '../domain/master';
-import { transitionFrom, transitionTo } from '../domain/master';
-import type { Attempt, Delta, ResultEvent } from '../domain/model';
+import type { Attempt } from '../domain/model';
 import { projectInventory } from '../domain/inventory/projection';
 import { buildPlan } from '../domain/planning/plan';
 import type { PlanResult } from '../domain/planning/types';
@@ -161,37 +160,4 @@ export function writesFromPlan(plan: PlanResult, data: AppData, now: string): Wr
   }
   if (put.length === 0 && !data.meta.planDirty) return null;
   return { put: { attempts: put }, meta: { planDirty: false } };
-}
-
-/**
- * 実績の入力元を推定する（訂正時の依存検査用）。同じ目標で入力状態を出力した成功実績を、
- * 古い順に未使用のものから対応付ける。素材の製作品も同様に対応付ける。
- */
-export function inferInputSources(events: ResultEvent[], attempt: Attempt, deltas: Delta[], at: { date: DateJst; order: number }): string[] {
-  const from = transitionFrom(attempt.transition);
-  // この実施より前に起きた成功だけを入力元の候補にする（日付が逆向きの依存を作らない）
-  const before = (e: ResultEvent) => compareDate(e.occurredDateJst, at.date) < 0 || (e.occurredDateJst === at.date && e.occurredOrder < at.order);
-  const active = events.filter((e) => e.status === 'active' && e.outcome === 'success' && e.goalId === attempt.goalId && e.recipeSnapshot && before(e));
-  const consumedBy = new Map<string, number>();
-  for (const e of events) if (e.status === 'active') for (const s of e.inputSourceEventIds) consumedBy.set(s, (consumedBy.get(s) ?? 0) + 1);
-  const out: string[] = [];
-  const producer = active
-    .filter((e) => {
-      const to = transitionTo(e.recipeSnapshot!.transition);
-      return to.equipmentId === from.equipmentId && to.star === from.star && !e.stepKey.includes('|craft:') && !consumedBy.has(e.eventId);
-    })
-    .sort((a, b) => a.originalSequence - b.originalSequence)[0];
-  if (producer) out.push(producer.eventId);
-  for (const d of deltas) {
-    if (d.scope !== 'equipment' || d.amount >= 0) continue;
-    if (d.equipmentId === from.equipmentId && d.star === from.star && d.amount === -1) continue;
-    let need = -d.amount;
-    for (const e of active.filter((x) => x.stepKey.includes(`|craft:${d.equipmentId}|`) && !consumedBy.has(x.eventId) && !out.includes(x.eventId)).sort((a, b) => a.originalSequence - b.originalSequence)) {
-      const to = transitionTo(e.recipeSnapshot!.transition);
-      if (to.equipmentId !== d.equipmentId || need <= 0) continue;
-      out.push(e.eventId);
-      need--;
-    }
-  }
-  return out;
 }

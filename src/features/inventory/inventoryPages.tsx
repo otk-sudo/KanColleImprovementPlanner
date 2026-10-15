@@ -140,7 +140,7 @@ export function EquipmentInventoryPage() {
                 .sort((a, b) => ['ok', 'remodel', 'missing', 'unknown'].indexOf(a.status) - ['ok', 'remodel', 'missing', 'unknown'].indexOf(b.status))
                 .slice(0, 6)
                 .map((h) => (
-                  <li key={h.shipId}>
+                  <li key={h.key}>
                     <span className="inv-helper-name">{master.shipName(h.status === 'ok' || h.status === 'remodel' ? h.displayShipId : h.requiredShipIds[h.requiredShipIds.length - 1]!)}</span>
                     <span>{h.status === 'ok' ? '✓ 条件適合' : h.status === 'remodel' ? '改造段階不足' : h.status === 'unknown' ? '所持状況不明' : '未所持'}</span>
                   </li>
@@ -202,7 +202,7 @@ export function ShipInventoryPage() {
                 {rows.map((r) => {
                   const shown = r.status === 'ok' || r.status === 'remodel' ? r.displayShipId : r.requiredShipIds[r.requiredShipIds.length - 1]!;
                   return (
-                    <tr key={r.shipId} className={r.status === 'missing' ? 'is-alt' : ''}>
+                    <tr key={r.key} className={r.status === 'missing' ? 'is-alt' : ''}>
                       <th scope="row">
                         <span className="inv-ship-cell">
                           <ShipImage shipId={shown} name={master.shipName(shown)} />

@@ -13,7 +13,7 @@ import { newId } from '../../infrastructure/repository';
 import { costKeyLabel, costKeyPlain, costSummary, costSummaryTight, transitionLabel, transitionShort } from '../../ui/format';
 import { transitionOptions, type AttemptCost } from '../../domain/master';
 import { WelcomeContent } from '../onboarding/WelcomePage';
-import { buildDays, emptyDay, KIND_LABEL, type DayEntry, type DayInfo } from './calendarModel';
+import { buildDays, emptyDay, KIND_LABEL, latestAttemptOf, type DayEntry, type DayInfo } from './calendarModel';
 import './calendar.css';
 
 // カレンダー（S01 月・S02 週・S18 日付指定・S24 個別スキップ・S25 日全体スキップ・S30 前提待ち）。
@@ -641,7 +641,7 @@ export function PendingPage() {
   const step = plan?.steps.find((s) => s.stepKey === a.stepKey);
   const preds = (step?.predecessorKeys ?? []).map((k) => {
     const s = plan?.steps.find((x) => x.stepKey === k);
-    const latest = data.attempts.filter((x) => x.stepKey === k).sort((x, y) => (x.attemptId < y.attemptId ? -1 : 1)).at(-1);
+    const latest = latestAttemptOf(data.attempts, k);
     const state = latest?.scheduledDate === a.scheduledDate ? (latest.outcome === 'none' ? '未実施' : KIND_LABEL[latest.outcome as 'skip']) : '未配置';
     return { label: s ? transitionLabel(master, s.transition) : k, state, role: s?.role ?? 'target' };
   });

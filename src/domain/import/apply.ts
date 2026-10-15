@@ -130,11 +130,18 @@ export function buildImportPreview(
   return { items, updates, kept, conflicts, protectionIssues, unknownIds, noChange: updates.length === 0, noChangeReasons };
 }
 
+/** プレビューで scope ごとに採用した入力（sources の添字） */
+export function previewSourceByScope(preview: ImportPreview): Partial<Record<ScopeKey, number>> {
+  return Object.fromEntries(preview.items.map((i) => [i.scope, i.sourceIndex]));
+}
+
 export interface ApplyImportInput {
   baselines: Baseline[];
   protections: Protection[];
   updates: ScopeUpdate[];
   sources: { kind: ImportKind; inputHash: string; capturedAt: string | null }[];
+  /** scope ごとに採用した入力（sources の添字）。省略時は先頭の入力 */
+  sourceByScope?: Partial<Record<ScopeKey, number>>;
   now: string;
   snapshotId: string;
   /** 反映時点で保存済みの実績の最大 originalSequence */
@@ -154,9 +161,11 @@ export interface ApplyImportResult {
 export function applyImport(input: ApplyImportInput): ApplyImportResult {
   if (input.updates.length === 0) return { baselines: input.baselines, protections: input.protections, changedScopes: [] };
   const byScope = new Map(input.baselines.map((b) => [b.scope, b]));
-  const source = input.sources[0] ?? { kind: 'material' as ImportKind, inputHash: '', capturedAt: null };
+  const fallback = { kind: 'material' as ImportKind, inputHash: '', capturedAt: null };
   let protections = input.protections;
   for (const u of input.updates) {
+    // 基準の出所は、その scope に採用した入力（複数入力・競合の選択でも取り違えない）
+    const source = input.sources[input.sourceByScope?.[u.scope] ?? 0] ?? input.sources[0] ?? fallback;
     const base: Baseline = {
       scope: u.scope,
       snapshotId: input.snapshotId,

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { Page } from '../../app/Shell';
 import { useStore, type ImportInput, type ImportSession } from '../../app/store';
 import { handleImport } from '../../application/commands';
-import { buildImportPreview, scopeLabel, type ImportPreview } from '../../domain/import/apply';
+import { buildImportPreview, previewSourceByScope, scopeLabel, type ImportPreview } from '../../domain/import/apply';
 import { IMPORT_KIND_LABELS, IMPORT_LIMITS, type ImportKind } from '../../domain/import/parse';
 import { isItemScope, isResourceScope, scopeId, type ScopeKey } from '../../domain/inventory/types';
 import { newId } from '../../infrastructure/repository';
@@ -481,7 +481,7 @@ export function ImportConfirmPage() {
   const confirm = async () => {
     const sources = importSession.inputs.filter((i) => i.result.ok && !i.excluded).map((i) => (i.result.ok ? { kind: i.result.value.kind, inputHash: i.result.value.inputHash, capturedAt: null } : null)).filter((x) => x !== null);
     // 再送で同じ内容になるよう、ID・日時は確認画面の操作単位で固定する
-    const r = await run('ImportInventory', handleImport, { updates: preview.updates, sources, snapshotId: `snap-${importSession.commandId}`, now: importSession.startedAt }, { commandId: importSession.commandId, base: { datasetEpoch: importSession.datasetEpoch, expectedRevision: importSession.revision } });
+    const r = await run('ImportInventory', handleImport, { updates: preview.updates, sources, sourceByScope: previewSourceByScope(preview), snapshotId: `snap-${importSession.commandId}`, now: importSession.startedAt }, { commandId: importSession.commandId, base: { datasetEpoch: importSession.datasetEpoch, expectedRevision: importSession.revision } });
     if (!r.ok) {
       setMessage(r.message);
       // 競合を知らせた後は、表示している最新の内容を前提に確定し直せるようにする

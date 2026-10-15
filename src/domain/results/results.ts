@@ -3,8 +3,8 @@ import { bucketKey, type ScopeKey } from '../inventory/types';
 import type { DateJst } from '../jst';
 import { compareDate } from '../jst';
 import { MAX_STAR } from '../ids';
-import type { Transition } from '../master';
-import type { Baseline, Delta, Outcome, ResultEvent } from '../model';
+import { transitionFrom, transitionTo, type Transition } from '../master';
+import type { Attempt, Baseline, Delta, Outcome, ResultEvent } from '../model';
 
 // 実績の増減・基準境界・訂正の依存検査（design/06・10・12・18）。
 
@@ -105,11 +105,52 @@ export type CorrectionCheck = { ok: true } | { ok: false; reason: 'DEPENDENT_RES
  * 訂正の整合を検査する（P18・P48・P49）。
  * 出力を後続が使っている成功を成功以外へ変える、または後続より後の日付へ動かす訂正は確定しない。
  */
-export function validateCorrection(input: { event: ResultEvent; newOutcome: Outcome | 'voided'; newOccurredDate: DateJst; events: ResultEvent[] }): CorrectionCheck {
+/** 実施の前後関係（日付 → 日内順）。a が b より前に起きたか */
+export function happenedBefore(a: { date: DateJst; order: number }, b: { date: DateJst; order: number }): boolean {
+  const c = compareDate(a.date, b.date);
+  return c < 0 || (c === 0 && a.order < b.order);
+}
+
+export function validateCorrection(input: { event: ResultEvent; newOutcome: Outcome | 'voided'; newOccurredDate: DateJst; newOccurredOrder: number; events: ResultEvent[] }): CorrectionCheck {
   const deps = dependentsOf(input.event.eventId, input.events);
   if (deps.length === 0) return { ok: true };
   if (input.event.outcome === 'success' && input.newOutcome !== 'success') return { ok: false, reason: 'DEPENDENT_RESULTS', dependents: deps };
+  // 直接の後続より前に起きたままであること（同じ日なら日内順も比べる）
   const direct = deps.filter((d) => d.inputSourceEventIds.includes(input.event.eventId));
-  if (direct.some((d) => compareDate(d.occurredDateJst, input.newOccurredDate) < 0)) return { ok: false, reason: 'ORDER_VIOLATION', dependents: deps };
+  const at = { date: input.newOccurredDate, order: input.newOccurredOrder };
+  if (direct.some((d) => !happenedBefore(at, { date: d.occurredDateJst, order: d.occurredOrder }))) return { ok: false, reason: 'ORDER_VIOLATION', dependents: deps };
   return { ok: true };
+}
+
+/**
+ * 実績の入力元を推定する（訂正時の依存検査用）。同じ目標で入力状態を出力した成功実績を、
+ * 古い順に未使用のものから対応付ける。素材の製作品も同様に対応付ける。
+ */
+export function inferInputSources(events: ResultEvent[], attempt: Attempt, deltas: Delta[], at: { date: DateJst; order: number }): string[] {
+  const from = transitionFrom(attempt.transition);
+  // この実施より前に起きた成功だけを入力元の候補にする（日付が逆向きの依存を作らない）
+  const before = (e: ResultEvent) => happenedBefore({ date: e.occurredDateJst, order: e.occurredOrder }, at);
+  const active = events.filter((e) => e.status === 'active' && e.outcome === 'success' && e.goalId === attempt.goalId && e.recipeSnapshot && before(e));
+  const consumedBy = new Map<string, number>();
+  for (const e of events) if (e.status === 'active') for (const s of e.inputSourceEventIds) consumedBy.set(s, (consumedBy.get(s) ?? 0) + 1);
+  const out: string[] = [];
+  const producer = active
+    .filter((e) => {
+      const to = transitionTo(e.recipeSnapshot!.transition);
+      return to.equipmentId === from.equipmentId && to.star === from.star && !e.stepKey.includes('|craft:') && !consumedBy.has(e.eventId);
+    })
+    .sort((a, b) => a.originalSequence - b.originalSequence)[0];
+  if (producer) out.push(producer.eventId);
+  for (const d of deltas) {
+    if (d.scope !== 'equipment' || d.amount >= 0) continue;
+    if (d.equipmentId === from.equipmentId && d.star === from.star && d.amount === -1) continue;
+    let need = -d.amount;
+    for (const e of active.filter((x) => x.stepKey.includes(`|craft:${d.equipmentId}|`) && !consumedBy.has(x.eventId) && !out.includes(x.eventId)).sort((a, b) => a.originalSequence - b.originalSequence)) {
+      const to = transitionTo(e.recipeSnapshot!.transition);
+      if (to.equipmentId !== d.equipmentId || need <= 0) continue;
+      out.push(e.eventId);
+      need--;
+    }
+  }
+  return out;
 }

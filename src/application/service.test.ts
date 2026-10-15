@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildMasterIndex } from '../domain/master';
 import { parseImportText } from '../domain/import/parse';
 import { projectInventory } from '../domain/inventory/projection';
-import { buildDeltas } from '../domain/results/results';
-import type { Goal } from '../domain/model';
+import { buildDeltas, inferInputSources } from '../domain/results/results';
+import type { Goal, ResultEvent } from '../domain/model';
 import { KaishuDb } from '../infrastructure/db';
 import { loadData } from '../infrastructure/repository';
 import { FX, fixtureMaster } from '../test-support/fixtureMaster';
-import { AppService, inferInputSources, type Clock } from './service';
+import { AppService, type Clock } from './service';
 import {
   handleCancelDraft,
   handleCorrectResult,
@@ -450,6 +450,39 @@ describe('レビュー指摘（PR #1）', () => {
     const r = await s.run('CorrectResult', handleCorrectResult, { eventId: failed.eventId, newOutcome: 'success', newDeltas: success, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '' }, await base(s));
     expect(r.status).toBe('VALIDATION_ERROR');
     if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('SUCCESSOR_HAS_RESULT');
+  });
+
+  it('消費を訂正すると入力元を推定し直す（製作品の消費をなくせば製作の実績を拘束せず、加えれば入力元にする）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const snap = (transition: ResultEvent['recipeSnapshot'] extends infer R ? (R extends { transition: infer T } ? T : never) : never) => ({ masterVersion: m.version, transition, fromName: '', toName: '', mode: 'normal' as const, entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null });
+    const craft: ResultEvent = { eventId: 'craft', attemptId: 'c@1', stepKey: `g1|craft:${FX.materialA}|x`, goalId: 'g1', originalSequence: 1, revision: 1, status: 'active', outcome: 'success', occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [{ scope: 'equipment', equipmentId: FX.materialA, star: 0, amount: -1 }, { scope: 'equipment', equipmentId: FX.materialA, star: 1, amount: 1 }], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: snap({ kind: 'improve', equipmentId: FX.materialA, fromStar: 0, toStar: 1 }), inputSourceEventIds: [], history: [] };
+    const consumes = [{ scope: 'equipment' as const, equipmentId: FX.materialA, star: 1, amount: -1 }];
+    const consumer: ResultEvent = { ...craft, eventId: 'ev', attemptId: a.attemptId, stepKey: a.stepKey, originalSequence: 2, outcome: 'failure', occurredDateJst: '2026-10-14', occurredOrder: 1, deltas: consumes, recipeSnapshot: null, inputSourceEventIds: ['craft'] };
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 3 }, resultEvents: [craft, consumer], attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, outcome: 'failure' as const, resultEventId: 'ev' } : x)) };
+    const payload = { eventId: 'ev', newOutcome: 'failure' as const, occurredDateJst: '2026-10-14', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' };
+    const dropped = handleCorrectResult(data, { ...payload, newDeltas: [{ scope: 'resource:8', amount: -1 }] });
+    expect(dropped.ok && dropped.writes.put?.resultEvents?.[0]?.inputSourceEventIds).toEqual([]);
+    const added = handleCorrectResult({ ...data, resultEvents: [craft, { ...consumer, deltas: [{ scope: 'resource:8', amount: -1 }], inputSourceEventIds: [] }] }, { ...payload, newDeltas: consumes });
+    expect(added.ok && added.writes.put?.resultEvents?.[0]?.inputSourceEventIds).toEqual(['craft']);
+    // 製作品を使う記録を、製作より前の日付へ動かす訂正は保存しない
+    const early = handleCorrectResult(data, { ...payload, newDeltas: consumes, occurredDateJst: '2026-10-12' });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.errors[0]?.code).toBe('ORDER_VIOLATION');
+  });
+
+  it('訂正で実施日を変えると、その日の記録の後ろに日内順を付け直す', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const other: ResultEvent = { eventId: 'other', attemptId: 'o@1', stepKey: 'o', goalId: 'g9', originalSequence: 1, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const mine: ResultEvent = { ...other, eventId: 'ev', attemptId: a.attemptId, stepKey: a.stepKey, goalId: 'g1', originalSequence: 2, occurredDateJst: '2026-10-14', occurredOrder: 1 };
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 3 }, resultEvents: [other, mine], attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, outcome: 'failure' as const, resultEventId: 'ev' } : x)) };
+    const r = handleCorrectResult(data, { eventId: 'ev', newOutcome: 'failure', newDeltas: [], occurredDateJst: '2026-10-13', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' });
+    expect(r.ok && r.writes.put?.resultEvents?.[0]?.occurredOrder).toBe(2);
   });
 
   it('実施日より後に記録された成功を入力元にしない（日付が逆向きの依存は保存しない）', async () => {

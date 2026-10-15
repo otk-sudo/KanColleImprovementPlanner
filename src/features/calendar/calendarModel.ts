@@ -2,6 +2,7 @@ import { compareDate, type DateJst, weekdayOf } from '../../domain/jst';
 import type { Transition } from '../../domain/master';
 import type { Attempt, ResultEvent, Settings } from '../../domain/model';
 import type { Placement, PlanResult } from '../../domain/planning/types';
+import { attemptSeq } from '../../domain/planning/plan';
 import { holidaySet } from '../../domain/planning/schedule';
 import type { AppData } from '../../infrastructure/repository';
 
@@ -120,3 +121,8 @@ export const KIND_LABEL: Record<EntryKind, string> = {
   review: '! 確認待ち',
   pending: '前提待ち',
 };
+
+/** 工程の最新の試行（番号の数値が最大のもの） */
+export function latestAttemptOf(attempts: Attempt[], stepKey: string): Attempt | undefined {
+  return attempts.filter((a) => a.stepKey === stepKey).sort((a, b) => attemptSeq(a) - attemptSeq(b)).at(-1);
+}

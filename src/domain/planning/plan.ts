@@ -1,5 +1,5 @@
 import { bucketKey } from '../inventory/types';
-import { addDays, compareDate, type DateJst } from '../jst';
+import { addDays, compareDate, weekdayOf, type DateJst } from '../jst';
 import { MAX_STAR } from '../ids';
 import {
   conversionStar,
@@ -131,7 +131,8 @@ function chainTransitions(m: MasterIndex, routeIds: number[], start: ChainStart,
 const keyStar = (k: string) => Number(k.split(':')[1]);
 const keyId = (k: string) => Number(k.split(':')[0]);
 
-function attemptSeq(a: Attempt): number {
+/** 試行の番号（attemptId の @ 以降）。文字列ではなく数値で比べる */
+export function attemptSeq(a: Pick<Attempt, 'attemptId'>): number {
   const n = Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1));
   return Number.isFinite(n) ? n : 0;
 }
@@ -226,9 +227,14 @@ export function buildPlan(input: PlanInput): PlanResult {
     return taken;
   };
 
+  // 鎖の番号（目標・役割・製作対象ごと）。毎回全鎖を走査しない
+  const chainCounts = new Map<string, number>();
   const newChain = (goal: Goal, role: 'target' | 'craft', craftFor: number | null, transitions: Transition[]): Chain => {
+    const countKey = `${goal.goalId}|${role}|${craftFor}`;
+    const n = chainCounts.get(countKey) ?? 0;
+    chainCounts.set(countKey, n + 1);
     const c: Chain = {
-      chainId: `${goal.goalId}#${role === 'target' ? 't' : `c${craftFor}-`}${chains.filter((x) => x.goal.goalId === goal.goalId && x.role === role && x.craftFor === craftFor).length}`,
+      chainId: `${goal.goalId}#${role === 'target' ? 't' : `c${craftFor}-`}${n}`,
       goal,
       role,
       craftFor,
@@ -328,9 +334,18 @@ export function buildPlan(input: PlanInput): PlanResult {
     }
   };
 
+  // 上限に達したら、それ以上の改修対象の工程は展開せず、目標ごとの残り件数を計算上限として未配置にする
+  const limitedTargets = new Map<string, number>();
   for (const g of goals) {
     const alloc = allocById.get(g.goalId)!;
-    const targetChains = alloc.targets.map((start) => newChain(g, 'target', null, chainTransitions(m, alloc.routeIds, start, { equipmentId: g.equipmentId, star: g.targetStar })));
+    const targetChains: Chain[] = [];
+    for (const start of alloc.targets) {
+      if (computationLimited) {
+        limitedTargets.set(g.goalId, (limitedTargets.get(g.goalId) ?? 0) + 1);
+        continue;
+      }
+      targetChains.push(newChain(g, 'target', null, chainTransitions(m, alloc.routeIds, start, { equipmentId: g.equipmentId, star: g.targetStar })));
+    }
     processConsumers(g, targetChains, [], 0);
   }
 
@@ -549,12 +564,14 @@ export function buildPlan(input: PlanInput): PlanResult {
   }
 
   // 実行可否（当日の前提待ち・担当艦の不一致）
+  const todayWeekday = weekdayOf(today);
   const placementByKey = new Map(placements.filter((p) => !orphanToday.some((o) => o.attemptId === p.attemptId)).map((p) => [p.stepKey, p]));
   for (const p of placements) {
     if (p.executionGate === 'reviewRequired' || p.date !== today) continue;
     const s = stepByKey.get(p.stepKey);
     if (!s) continue;
-    if (p.fixed && p.helperShipId !== null && !s.helperCandidates.some((c) => c.shipId === p.helperShipId)) {
+    // 固定した担当艦が、今も候補にあり今日の曜日に担当できるか（優先担当艦の変更・マスター更新で曜日が変わる場合）
+    if (p.fixed && p.helperShipId !== null && !s.helperCandidates.some((c) => c.shipId === p.helperShipId && c.days.includes(todayWeekday))) {
       p.executionGate = 'reviewRequired';
       continue;
     }
@@ -684,6 +701,32 @@ export function buildPlan(input: PlanInput): PlanResult {
         predecessorTentative: false,
         executionGate: 'ready',
         reasons: [reason],
+        fixed: false,
+      });
+    }
+  }
+
+  for (const g of goals) {
+    const n = limitedTargets.get(g.goalId) ?? 0;
+    for (let i = 0; i < n; i++) {
+      unplaced.push({
+        stepKey: `${g.goalId}|limit|${i}`,
+        goalId: g.goalId,
+        attemptId: '',
+        persisted: false,
+        provisional: false,
+        date: null,
+        dayOrder: 0,
+        helperShipId: null,
+        entryIndex: null,
+        mode: 'normal',
+        cost: null,
+        consumption: [],
+        shortages: [],
+        tentative: false,
+        predecessorTentative: false,
+        executionGate: 'ready',
+        reasons: ['COMPUTATION_LIMIT'],
         fixed: false,
       });
     }
@@ -836,7 +879,7 @@ export function buildPlan(input: PlanInput): PlanResult {
     }
   }
 
-  if (computationLimited) warnings.push('計算の上限に達したため、一部の素材製作工程を展開していません。');
+  if (computationLimited) warnings.push('計算の上限に達したため、一部の改修・素材製作の工程を展開していません。');
 
   return {
     todayJst: today,

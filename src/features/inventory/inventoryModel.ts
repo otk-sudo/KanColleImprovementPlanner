@@ -42,6 +42,8 @@ export function equipmentRows(projection: InventoryProjection, plan: PlanResult 
 export type HelperStatus = 'ok' | 'missing' | 'remodel' | 'unknown';
 
 export interface HelperRow {
+  /** 系統と要求する艦の組（同じ系統でも要求する改造段階が違えば別の行） */
+  key: string;
   shipId: number;
   displayShipId: number;
   status: HelperStatus;
@@ -55,11 +57,11 @@ export function helperRows(m: MasterIndex, projection: InventoryProjection, goal
   const equipmentIds = new Set<number>();
   for (const g of goals) equipmentIds.add(g.equipmentId);
   for (const s of plan?.steps ?? []) equipmentIds.add(s.transition.equipmentId);
-  const byFamily = new Map<number, HelperRow>();
+  const byRequirement = new Map<string, HelperRow>();
   for (const eqId of [...equipmentIds].sort((a, b) => a - b)) {
     const required = new Set<number>();
     for (const e of m.recipes.get(eqId) ?? []) for (const h of e.helpers) for (const id of h.shipIds) required.add(id);
-    // 同じ改造系統の要求は1行にまとめる
+    // 同じ改造系統の要求は1行にまとめる（装備ごとに要求する段階が違う場合は、要求ごとに別の行にして状態を判定する）
     const families = new Map<number, number[]>();
     for (const id of required) {
       const fam = m.ships.get(id)?.familyId ?? id;
@@ -89,16 +91,16 @@ export function helperRows(m: MasterIndex, projection: InventoryProjection, goal
         display = sorted[0]!;
         ownedLabel = '未所持';
       }
-      const existing = byFamily.get(fam);
+      const key = `${fam}:${sorted.join(',')}`;
+      const existing = byRequirement.get(key);
       if (existing) {
         if (!existing.targets.includes(eqId)) existing.targets.push(eqId);
-        for (const id of sorted) if (!existing.requiredShipIds.includes(id)) existing.requiredShipIds.push(id);
       } else {
-        byFamily.set(fam, { shipId: sorted[0]!, displayShipId: display, status, ownedLabel, requiredShipIds: sorted, targets: [eqId] });
+        byRequirement.set(key, { key, shipId: sorted[0]!, displayShipId: display, status, ownedLabel, requiredShipIds: sorted, targets: [eqId] });
       }
     }
   }
-  return [...byFamily.values()].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.shipId - b.shipId);
+  return [...byRequirement.values()].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.shipId - b.shipId || a.key.localeCompare(b.key));
 }
 
 function statusRank(s: HelperStatus): number {

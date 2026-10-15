@@ -78,6 +78,15 @@ describe('api_get_member/slot_item', () => {
     expect(err(wrap([])).code).toBe('AMBIGUOUS_SCOPE');
     expect(err('[]').code).toBe('AMBIGUOUS_SCOPE');
   });
+
+  it('74式EN のファイル名で API が分かる空配列は、その種類として扱う（slot_item は全装備0件として警告付きで差分確認）', () => {
+    const v = ok(wrap([]), { fileName: '20261014_S@api_get_member@slot_item.json' });
+    expect(v.kind).toBe('slotItem');
+    expect(v.updates).toEqual([{ scope: 'equipment', granularity: 'instance', buckets: [], instances: [] }]);
+    expect(v.warnings.map((w) => w.code)).toContain('EMPTY_EQUIPMENT');
+    // material の空配列は提供IDがなく「更新対象なし」
+    expect(ok(wrap([]), { fileName: '20261014_S@api_get_member@material.json' }).updates).toEqual([]);
+  });
 });
 
 describe('api_port/port', () => {

@@ -4,7 +4,7 @@ import { projectInventory } from '../domain/inventory/projection';
 import { bucketKey, type ScopeKey, type ScopeUpdate } from '../domain/inventory/types';
 import { compareDate, isValidDate, type DateJst } from '../domain/jst';
 import type { Attempt, Delta, DraftResult, Goal, Holiday, Outcome, Protection, RecipeSnapshot, ResultEvent, ResultRevision, Settings } from '../domain/model';
-import { fixedHistoryOnlyScopes, scopesOfDeltas, validateCorrection, wouldGoNegative } from '../domain/results/results';
+import { fixedHistoryOnlyScopes, happenedBefore, inferInputSources, scopesOfDeltas, validateCorrection, wouldGoNegative } from '../domain/results/results';
 import type { BackupData } from '../domain/backup';
 import type { Meta } from '../infrastructure/db';
 import type { AppData, HandlerResult, ValidationIssue } from '../infrastructure/repository';
@@ -19,16 +19,13 @@ function projection(data: AppData, excludeDraftId: string | null = null) {
   return projectInventory(data.baselines, data.resultEvents, excludeDraftId ? data.drafts.filter((d) => d.draftId !== excludeDraftId) : data.drafts);
 }
 
-/** 実施の前後関係（日付 → 日内順） */
-function happenedBefore(a: { date: DateJst; order: number }, b: { date: DateJst; order: number }): boolean {
-  const c = compareDate(a.date, b.date);
-  return c < 0 || (c === 0 && a.order < b.order);
-}
 
 // ---------------- 取り込み ----------------
 export interface ImportPayload {
   updates: ScopeUpdate[];
   sources: { kind: ImportKind; inputHash: string; capturedAt: string | null }[];
+  /** scope ごとに採用した入力（sources の添字） */
+  sourceByScope?: Partial<Record<ScopeKey, number>>;
   snapshotId: string;
   now: string;
 }
@@ -44,6 +41,7 @@ export function handleImport(data: AppData, p: ImportPayload): HandlerResult<Imp
     protections: data.protections,
     updates: p.updates,
     sources: p.sources,
+    sourceByScope: p.sourceByScope,
     now: p.now,
     snapshotId: p.snapshotId,
     maxSequence: data.meta.nextSequence - 1,
@@ -373,13 +371,36 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const e = data.resultEvents.find((x) => x.eventId === p.eventId);
   if (!e || e.status !== 'active') return fail('EVENT_NOT_FOUND', '訂正対象の記録が見つかりません。');
   if (compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には記録できません。');
-  const check = validateCorrection({ event: e, newOutcome: p.newOutcome, newOccurredDate: p.occurredDateJst, events: data.resultEvents });
+  const attempt = data.attempts.find((a) => a.attemptId === e.attemptId);
+  const others = data.resultEvents.filter((x) => x.eventId !== e.eventId);
+  // 実施日を変えたら、その日の記録の後ろ（予定どおりの日なら予定の順番）に日内順を付け直す
+  const occurredOrder =
+    p.occurredDateJst === e.occurredDateJst ? e.occurredOrder : attempt ? recordOrderFor({ resultEvents: others }, attempt, p.occurredDateJst) : others.filter((x) => x.occurredDateJst === p.occurredDateJst).length + 1;
+  const check = validateCorrection({ event: e, newOutcome: p.newOutcome, newOccurredDate: p.occurredDateJst, newOccurredOrder: occurredOrder, events: data.resultEvents });
   if (!check.ok) {
     return fail(check.reason, check.reason === 'DEPENDENT_RESULTS' ? 'この記録の結果を使った後続の実績があります。後続の記録から先に修正してください。' : '後続の実績より後の日付には変更できません。', {
       dependents: check.dependents.map((d) => ({ eventId: d.eventId, occurredDateJst: d.occurredDateJst, stepKey: d.stepKey, outcome: d.outcome })),
     });
   }
   const deltas = p.newOutcome === 'voided' ? [] : p.newDeltas;
+  // 入力元は訂正後の消費と実施日時から推定し直す（消費しなくなった製作品の実績を拘束せず、新たに使う製作品を対応付ける）。
+  // スキップは何も使わない。未実施への訂正は記録が無効になるため元の対応を履歴として残す
+  let inputSourceEventIds = e.inputSourceEventIds;
+  if (attempt && p.newOutcome !== 'voided') {
+    const at = { date: p.occurredDateJst, order: occurredOrder };
+    inputSourceEventIds = p.newOutcome === 'skip' ? [] : inferInputSources(others, attempt, deltas, at);
+    // 元の入力元のうち今も必要なものが、訂正後の実施より後になる場合は保存しない
+    const needed = p.newOutcome === 'skip' ? [] : inferInputSources(others, attempt, deltas, { date: '9999-12-31', order: Number.MAX_SAFE_INTEGER });
+    const late = e.inputSourceEventIds
+      .filter((id) => needed.includes(id))
+      .map((id) => others.find((x) => x.eventId === id))
+      .filter((x): x is ResultEvent => !!x && !happenedBefore({ date: x.occurredDateJst, order: x.occurredOrder }, at));
+    if (late.length > 0) {
+      return fail('ORDER_VIOLATION', '前の工程の記録より前の日付には変更できません。', {
+        dependents: late.map((d) => ({ eventId: d.eventId, occurredDateJst: d.occurredDateJst, stepKey: d.stepKey, outcome: d.outcome })),
+      });
+    }
+  }
   const scopes = scopesOfDeltas([...e.deltas, ...deltas]);
   const fixed = fixedHistoryOnlyScopes(e, scopes, data.baselines);
   const historyOnly = [...new Set([...fixed, ...p.historyOnlyScopes.filter((s) => scopes.includes(s)), ...e.historyOnlyScopes])];
@@ -397,11 +418,12 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
     outcome: p.newOutcome === 'voided' ? e.outcome : p.newOutcome,
     deltas,
     occurredDateJst: p.occurredDateJst,
+    occurredOrder,
+    inputSourceEventIds,
     historyOnlyScopes: historyOnly,
     recordedAt: p.now,
     history: [...e.history, { ...prev, reason: p.reason || null }],
   };
-  const attempt = data.attempts.find((a) => a.attemptId === e.attemptId);
   const attempts: Attempt[] = [];
   if (attempt) attempts.push({ ...attempt, outcome: p.newOutcome === 'voided' ? 'none' : p.newOutcome, resultEventId: p.newOutcome === 'voided' ? null : e.eventId });
   // 成功へ訂正すると同じ工程の再挑戦・繰越の後継は不要になる。記録のときと同じく、結果のない後継は取り消し、

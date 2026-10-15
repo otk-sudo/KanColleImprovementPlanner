@@ -101,7 +101,7 @@ describe('訂正の基準境界と依存', () => {
   it('P18：A成功を失敗へ訂正するとき、A の出力を使った有効な実績があれば保存しない', () => {
     const a = ev('A', 1);
     const b = ev('B', 2, { inputSourceEventIds: ['A'] });
-    const r = validateCorrection({ event: a, newOutcome: 'failure', newOccurredDate: a.occurredDateJst, events: [a, b] });
+    const r = validateCorrection({ event: a, newOutcome: 'failure', newOccurredDate: a.occurredDateJst, newOccurredOrder: a.occurredOrder, events: [a, b] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.dependents.map((e) => e.eventId)).toEqual(['B']);
   });
@@ -109,12 +109,20 @@ describe('訂正の基準境界と依存', () => {
   it('P49：後続より後の日付へ前提の成功を動かす訂正は保存しない', () => {
     const a = ev('A', 1, { occurredDateJst: '2026-10-12' });
     const b = ev('B', 2, { inputSourceEventIds: ['A'], occurredDateJst: '2026-10-13' });
-    const r = validateCorrection({ event: a, newOutcome: 'success', newOccurredDate: '2026-10-14', events: [a, b] });
+    const r = validateCorrection({ event: a, newOutcome: 'success', newOccurredDate: '2026-10-14', newOccurredOrder: 1, events: [a, b] });
     expect(r.ok).toBe(false);
   });
 
   it('依存のない訂正は保存できる', () => {
     const a = ev('A', 1);
-    expect(validateCorrection({ event: a, newOutcome: 'failure', newOccurredDate: a.occurredDateJst, events: [a] }).ok).toBe(true);
+    expect(validateCorrection({ event: a, newOutcome: 'failure', newOccurredDate: a.occurredDateJst, newOccurredOrder: a.occurredOrder, events: [a] }).ok).toBe(true);
+  });
+
+  it('前提の成功を後続と同じ日へ動かすときは日内順も比べる（同じ日の後ろ・同順は保存しない）', () => {
+    const a = ev('A', 1, { occurredDateJst: '2026-10-12', occurredOrder: 1 });
+    const b = ev('B', 2, { inputSourceEventIds: ['A'], occurredDateJst: '2026-10-13', occurredOrder: 1 });
+    expect(validateCorrection({ event: a, newOutcome: 'success', newOccurredDate: '2026-10-13', newOccurredOrder: 2, events: [a, b] }).ok).toBe(false);
+    expect(validateCorrection({ event: a, newOutcome: 'success', newOccurredDate: '2026-10-13', newOccurredOrder: 1, events: [a, b] }).ok).toBe(false);
+    expect(validateCorrection({ event: a, newOutcome: 'success', newOccurredDate: '2026-10-13', newOccurredOrder: 0, events: [a, b] }).ok).toBe(true);
   });
 });

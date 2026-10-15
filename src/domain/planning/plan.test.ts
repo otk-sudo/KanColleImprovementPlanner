@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FX, fixtureMaster, stage } from '../../test-support/fixtureMaster';
 import { attempt, goal, planInput } from '../../test-support/planFixtures';
 import type { MasterFile } from '../master/schema';
-import { buildPlan } from './plan';
+import { buildPlan, COMPUTATION_LIMITS } from './plan';
 
 const ALL = [0, 1, 2, 3, 4, 5, 6];
 
@@ -321,6 +321,29 @@ describe('確実化と完了予定（design/17）', () => {
 });
 
 describe('レビュー指摘（PR #1）', () => {
+  it('工程数が計算の上限に達したら、それ以上の改修対象の工程を展開せず、残りを計算上限として未配置にする', () => {
+    // ★0 を 1,100 個所持し ★10 を 1,100 個目指す（10 工程 × 1,100 = 11,000 工程 > 上限 10,000）
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 10, count: 1100 });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1100]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { searchDays: 7 } }));
+    expect(plan.computationLimited).toBe(true);
+    expect(plan.steps.length).toBeLessThanOrEqual(COMPUTATION_LIMITS.maxSteps + 10);
+    const limited = plan.unplaced.filter((p) => p.goalId === 'g' && p.reasons.includes('COMPUTATION_LIMIT'));
+    expect(limited.length).toBeGreaterThan(0);
+    expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
+  });
+
+  it('今日に固定した予定でも、担当艦が今日の曜日に担当できなくなったら確認待ちにする', () => {
+    // 2026-10-14 は水曜。担当艦 H改二 は月・金だけ（マスター更新で曜日が変わった、または他曜日の担当艦を選んだ）
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const fixedToday = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t, scheduledDate: '2026-10-14', helperShipId: 101 });
+    const plan = buildPlan(planInput({ master: simpleMaster({ days: [1, 5] }), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [fixedToday] }));
+    expect(plan.placements.find((p) => p.attemptId === fixedToday.attemptId)?.executionGate).toBe('reviewRequired');
+    // 曜日が合えば実行できる
+    const ok = buildPlan(planInput({ master: simpleMaster({ days: [3] }), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [fixedToday] }));
+    expect(ok.placements.find((p) => p.attemptId === fixedToday.attemptId)?.executionGate).toBe('ready');
+  });
+
   it('担当艦で素材が変わる改修は、素材計画に使ったエントリの担当艦だけで配置する（素材計画と予定を食い違わせない）', () => {
     const m = simpleMaster();
     m.ships.push({ id: 102, name: 'K', yomi: '', shipTypeId: 2, afterShipId: null, afterLevel: null, familyId: 102, sortNo: 3 });

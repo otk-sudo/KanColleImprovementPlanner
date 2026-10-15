@@ -333,7 +333,8 @@ export function parseImportText(raw: string, options: ParseOptions = {}): ParseR
       return fail('UNSUPPORTED_SHAPE', `ファイル名（${IMPORT_KIND_LABELS[fileKind]}）と本文の形（${IMPORT_KIND_LABELS[kind]}）が一致しません。`, '別のファイルを選んでいないか確認してください。');
     }
   } else {
-    const hinted = options.declaredKind ?? null;
+    // 74式EN のファイル名は API（エンドポイント）を示すので、空配列などの種類の指定として扱う
+    const hinted = options.declaredKind ?? fileKind;
     if (!hinted) {
       if (Array.isArray(apiData) && apiData.length === 0) {
         return fail('AMBIGUOUS_SCOPE', '空の一覧のため、装備・資材・アイテムのどれか判定できません。', '取り込む種類を指定してください。指定がないまま0件として反映することはしません。');
