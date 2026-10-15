@@ -929,6 +929,43 @@ describe('保護・復元', () => {
     expect(backupMasterVersion({ ...d.meta, activeMasterVersion: 'v1', masterReviewRequired: false }, m.version)).toBe('v1');
   });
 
+  it('別のタブが新しいマスターを適用した後、古いマスターを読み込んだままのタブは書き込みも再計算もしない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const old = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'old' })), clock);
+    const before = await s.load();
+    const r = await old.run('SaveSettings', handleSaveSettings, { weekdayLimits: [1, 1, 1, 1, 1, 1, 1], searchDays: 366 }, await base(s));
+    expect(r.status).toBe('WRITER_INCOMPATIBLE');
+    expect(await old.recalculate()).toBe('STALE_MASTER');
+    const after = await s.load();
+    expect(after.meta.revision).toBe(before.meta.revision);
+    expect(after.attempts).toEqual(before.attempts);
+  });
+
+  it('マスターの確認で計算を保留している間は、記録の訂正もしない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const rec = await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }] });
+    await s.run('RecordResult', handleRecordResult, rec, await base(s));
+    const d = await s.load();
+    const r = handleCorrectResult({ ...d, meta: { ...d.meta, masterReviewRequired: true } }, { eventId: rec.eventId, newOutcome: 'success', newDeltas: [], occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('MASTER_REVIEW_REQUIRED');
+  });
+
+  it('端末の時刻が戻ったままでも、保存済みの警告を何度も書き直さない（版を進めない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    clockMs -= 3600 * 1000; // 1時間戻す
+    await s.rollover();
+    const first = await s.load();
+    expect(first.meta.clockWarning).not.toBeNull();
+    await s.rollover();
+    await s.rollover();
+    expect((await s.load()).meta.revision).toBe(first.meta.revision);
+  });
+
   it('P30：新しいマスターで過去実績のレシピが消えても実績は残り、将来の予定は確認待ちにする', async () => {
     const s = await service();
     await seedPlan(s);

@@ -485,6 +485,8 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   if (!e || e.status !== 'active') return fail('EVENT_NOT_FOUND', '訂正対象の記録が見つかりません。');
   if (compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には記録できません。');
   if (invalidAmount(p.newDeltas)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
+  // マスター更新の確認待ちの間は、承認していないマスターの条件で記録を訂正しない
+  if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
   const attempt = data.attempts.find((a) => a.attemptId === e.attemptId);
   const others = data.resultEvents.filter((x) => x.eventId !== e.eventId);
   // 実施日を変えたら、その日の記録の後ろ（予定どおりの日なら予定の順番）に日内順を付け直す

@@ -17,7 +17,7 @@ export interface Clock {
 
 export const systemClock: Clock = { nowMs: () => Date.now() };
 
-export type RecalcStatus = 'UPDATED' | 'UNCHANGED' | 'MASTER_REVIEW' | 'FAILED' | 'CONFLICT';
+export type RecalcStatus = 'UPDATED' | 'UNCHANGED' | 'MASTER_REVIEW' | 'FAILED' | 'CONFLICT' | 'STALE_MASTER';
 
 export class AppService {
   constructor(
@@ -86,9 +86,18 @@ export class AppService {
     });
   }
 
+  /**
+   * このタブが読み込んだマスターが、保存されているデータの適用済みマスターより古いか（別のタブが新しいマスターを適用した後）。
+   * 古いマスターで計画を書き換えないよう、書き込みと再計算を止めて再読み込みを求める
+   */
+  staleMaster(meta: AppData['meta']): boolean {
+    return !meta.masterReviewRequired && meta.activeMasterVersion !== null && meta.activeMasterVersion !== this.master.version;
+  }
+
   /** 利用者の確定操作を実行し、事実の保存に成功したら計画を再計算する */
   async run<P, R>(commandType: string, handler: Handler<P, R>, payload: P, base: { datasetEpoch: string; expectedRevision: number; commandId?: string }): Promise<CommandOutcome<R> & { recalc?: RecalcStatus; commandId: string }> {
     const commandId = base.commandId ?? newId('cmd');
+    if (this.staleMaster((await loadData(this.db)).meta)) return { status: 'WRITER_INCOMPATIBLE', commandId };
     const outcome = await executeCommand(this.db, { commandId, commandType, datasetEpoch: base.datasetEpoch, expectedRevision: base.expectedRevision, payload }, handler, this.nowIso());
     if (outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED') {
       const recalc = await this.recalculate();
@@ -102,6 +111,7 @@ export class AppService {
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
       if (data.meta.masterReviewRequired) return 'MASTER_REVIEW';
+      if (this.staleMaster(data.meta)) return 'STALE_MASTER';
       let plan: PlanResult;
       try {
         plan = this.computePlan(data);
@@ -136,7 +146,8 @@ export class AppService {
       const today = last && compareDate(clockToday, last) < 0 ? last : clockToday;
       const preview = computeRollover(data.attempts, today, now, new Set(data.goals.map((g) => g.goalId)));
       const clockBack = nowMs < data.meta.lastClockMs - 5 * 60 * 1000;
-      if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && !clockBack) {
+      // 移す予定も日付の変化もなく、時刻の警告も保存済みなら何も書かない（版を進めて開いている画面を競合させない）
+      if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && (!clockBack || data.meta.clockWarning !== null)) {
         saved = true;
         break;
       }

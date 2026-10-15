@@ -175,6 +175,42 @@ test('A10：同じ記録を2つのタブで訂正したら、後から確定し�
   expect((await state(b)).resultEvents[0]!.outcome).toBe('failure');
 });
 
+test('A10：同じ確認待ちを2つのタブで再開したら、後から保存したタブは最新の下書きに読み直し、確認し直してもらう', async ({ context }) => {
+  const withPlan: BackupSpec = { ...seed, baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 5, 1], [ID.materialA, 0, 3]]), shipBaseline([ID.shipAKai2])], goals: [goal({ goalId: 'g1', equipmentId: ID.mainGunA, targetStar: 6, count: 1 })] };
+  const a = await context.newPage();
+  await start(a, { data: withPlan, route: '/calendar' });
+  await a.getByRole('link', { name: '結果を記録' }).first().click();
+  await a.getByRole('radio', { name: '失敗' }).click();
+  await a.getByLabel('改修資材', { exact: true }).fill('1');
+  await a.getByRole('button', { name: '実施済み・確認待ち' }).click();
+  await a.getByText('ゲームで実施済みです').click();
+  await a.getByRole('button', { name: '実施済み・確認待ちで保存' }).click();
+  await a.waitForURL(/#\/history/);
+  const draftId = (await state(a)).drafts[0]!.draftId;
+  const resume = `/history/drafts/${encodeURIComponent(draftId)}/resume`;
+  await a.goto(`/#${resume}`);
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto(`/#${resume}`);
+  await expect(b.getByLabel('改修資材', { exact: true })).toHaveValue('1');
+  // A がネジを 3 に直して保存
+  await a.getByLabel('改修資材', { exact: true }).fill('3');
+  await a.getByRole('button', { name: '実施済み・確認待ち' }).click();
+  await a.getByText('ゲームで実施済みです').click();
+  await a.getByRole('button', { name: '実施済み・確認待ちで保存' }).click();
+  await a.waitForURL(/#\/history/);
+  await expect.poll(async () => (await state(b)).meta.revision).toBe((await state(a)).meta.revision);
+  // B は開いた時点（1）のまま保存しようとする → 競合し、最新（3）に読み直して確認をやり直す
+  await b.getByRole('button', { name: '実施済み・確認待ち' }).click();
+  await b.getByText('ゲームで実施済みです').click();
+  await b.getByRole('button', { name: '実施済み・確認待ちで保存' }).click();
+  await expect(b.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  await expect(b.getByText(/改修資材：3個/)).toBeVisible();
+  await expect(b.getByRole('button', { name: '実施済み・確認待ちで保存' })).toBeDisabled();
+  expect((await state(b)).drafts[0]!.knownConsumptions).toContainEqual({ scope: 'resource:8', amount: -3 });
+});
+
 test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
   const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
   const a = await context.newPage();

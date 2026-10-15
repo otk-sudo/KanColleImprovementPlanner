@@ -452,7 +452,18 @@ export function DraftConfirmPage() {
       { commandId, base: form.base },
     );
     if (!res.ok) {
-      if (res.outcome.status === 'CONFLICT' || res.outcome.status === 'EPOCH_MISMATCH') formCache.set(formKey(attemptId), { ...form, base: res.latestBase });
+      if (res.outcome.status === 'CONFLICT' || res.outcome.status === 'EPOCH_MISMATCH') {
+        // 同じ確認待ちが別のタブなどで保存されていたら、その最新の内容に読み直し、実施済みの確認をやり直してもらう
+        const latestDraft = res.latest.drafts.find((d) => d.attemptId === attemptId && d.status === 'open');
+        const dv = latestDraft ? valuesFromDeltas(latestDraft.knownConsumptions, attempt.transition, latestDraft.reportedOutcome) : null;
+        formCache.set(
+          formKey(attemptId),
+          latestDraft && dv
+            ? { ...form, base: res.latestBase, draftId: latestDraft.draftId, outcome: latestDraft.reportedOutcome, occurredDate: latestDraft.occurredDateJst, values: dv.values, stars: dv.stars, scopeAnswers: latestDraft.scopeAnswers }
+            : { ...form, base: res.latestBase },
+        );
+        setChecked(false);
+      }
       return setMessage(res.message);
     }
     formCache.delete(formKey(attemptId));
