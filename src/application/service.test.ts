@@ -260,6 +260,21 @@ describe('実績・下書き・翌日処理', () => {
     expect(r.status).toBe('VALIDATION_ERROR');
   });
 
+  it('日本時間の日付が進んだら、繰り越す予定がなくても再計算し、今日になった工程を記録できる予定にする', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] });
+    await s.run('SaveGoal', handleSaveGoal, { goal: goal({ targetStar: 7 }), isNew: false }, await base(s));
+    const first = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    expect((await s.run('RecordResult', handleRecordResult, await recordPayload(s, first.attemptId, 'success'), await base(s))).status).toBe('APPLIED');
+    // 次の工程（★6→★7）は担当艦の曜日の金曜（10/16）。予定は保存せず計画上だけにある
+    expect((await s.load()).attempts.some((x) => x.transition.kind === 'improve' && x.transition.fromStar === 6)).toBe(false);
+    clockMs += 2 * 24 * 3600 * 1000; // 10/16（金）
+    const r = await s.rollover();
+    expect(r.moved).toBe(0);
+    const today = (await s.load()).attempts.find((x) => x.scheduledDate === '2026-10-16' && x.lifecycle === 'active' && x.outcome === 'none');
+    expect(today?.transition).toMatchObject({ fromStar: 6, toStar: 7 });
+  });
+
   it('翌日処理を保存できなかったら、保存できなかったことを返す（未実施の予定を移したことにしない）', async () => {
     const s = await service();
     await seedPlan(s);

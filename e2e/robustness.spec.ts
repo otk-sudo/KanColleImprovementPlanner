@@ -78,6 +78,25 @@ test('A10：通知で最新を表示していても、先に開いた編集フ�
   expect((await state(b)).goals.find((g) => g.goalId === 'g1')?.count).toBe(4);
 });
 
+test('A10：設定の保存が別のタブの変更と競合したら、入力を最新の設定に読み直す（古い値で上書きしない）', async ({ context }) => {
+  const a = await context.newPage();
+  await start(a, { data: seed, route: '/settings' });
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto('/#/settings');
+  await expect(b.locator('#search-days')).toHaveValue('366');
+  await a.locator('#search-days').selectOption('90');
+  await a.getByRole('button', { name: '設定を保存' }).click();
+  await expect(a.getByText('設定を保存しました。')).toBeVisible();
+  await expect.poll(async () => (await state(b)).meta.revision).toBe((await state(a)).meta.revision);
+  // B は開いた時点の値（366日）のまま保存しようとする → 競合し、入力を最新（90日）に読み直す
+  await b.getByRole('button', { name: '設定を保存' }).click();
+  await expect(b.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  await expect(b.locator('#search-days')).toHaveValue('90');
+  expect((await state(b)).settings.searchDays).toBe(90);
+});
+
 test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
   const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
   const a = await context.newPage();

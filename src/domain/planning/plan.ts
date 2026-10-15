@@ -452,12 +452,13 @@ export function buildPlan(input: PlanInput): PlanResult {
       }
       const blockers: UnplacedReason[] = [...helper.blockers];
       if (chain.blocked) blockers.unshift(chain.blocked);
-      const latest = latestOf(stepKey);
       let earliestDate = today;
       // 確認待ちの結果がある工程は、繰越後の後継があっても結果が決まるまで実行しない（元の試行が成功なら後継は不要になる）
       if ((attemptsByKey.get(stepKey) ?? []).some((a) => a.outcome === 'draft' && a.lifecycle !== 'cancelled')) blockers.unshift('RESULT_PENDING');
       // 今日実施した失敗・スキップの工程は翌日以降（実施日で判断し、別の日に実施した記録は今日から再挑戦できる）
-      if (latest && (latest.outcome === 'failure' || latest.outcome === 'skip') && (occurrence(latest)?.date ?? latest.scheduledDate) === today) earliestDate = tomorrow;
+      // 取り消された試行（訂正で不要になった再挑戦など）は飛ばして判断する
+      const lastLive = [...(attemptsByKey.get(stepKey) ?? [])].reverse().find((a) => a.lifecycle !== 'cancelled');
+      if (lastLive && (lastLive.outcome === 'failure' || lastLive.outcome === 'skip') && (occurrence(lastLive)?.date ?? lastLive.scheduledDate) === today) earliestDate = tomorrow;
       steps.push({
         stepKey,
         goalId: chain.goal.goalId,

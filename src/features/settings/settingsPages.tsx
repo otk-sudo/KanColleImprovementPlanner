@@ -64,6 +64,11 @@ export function SettingsPage() {
   const holidayId = useCommandId(start, end);
   const save = async () => {
     const r = await run('SaveSettings', handleSaveSettings, { weekdayLimits: limits, searchDays }, { commandId: settingsId });
+    // 別のタブなどの変更と競合したら、入力を最新の設定に読み直してから確認してもらう（古い値で上書きしない）
+    if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') {
+      setLimits(r.latest.settings.weekdayLimits);
+      setSearchDays(r.latest.settings.searchDays);
+    }
     setMessage(r.ok ? null : r.message);
     setSaved(r.ok ? settingsSavedMessage(r.recalc) : null);
   };

@@ -120,6 +120,8 @@ export class AppService {
     const now = this.nowIso();
     let moved = 0;
     let saved = false;
+    // 日付が進んだら、繰り越す予定がなくても再計算する（今日になった工程を記録できる予定として保存するため）
+    let dateAdvanced = false;
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
       const preview = computeRollover(data.attempts, today, now, new Set(data.goals.map((g) => g.goalId)));
@@ -134,11 +136,13 @@ export class AppService {
         (fresh) => {
           const rr = computeRollover(fresh.attempts, today, now, new Set(fresh.goals.map((g) => g.goalId)));
           moved = rr.successors.length;
+          dateAdvanced = fresh.meta.lastProcessedDateJst !== today;
           return {
             put: { attempts: [...rr.superseded, ...rr.successors] },
             meta: {
               lastProcessedDateJst: today,
-              planDirty: fresh.meta.planDirty || rr.successors.length > 0,
+              // 日付が進んだら再計算が必要（失敗しても次の確認で再試行する）
+              planDirty: fresh.meta.planDirty || rr.successors.length > 0 || fresh.meta.lastProcessedDateJst !== today,
               lastRollover: rr.successors.length > 0 ? { processedAt: now, today, fromDates: rr.fromDates, successorAttemptIds: rr.successors.map((s) => s.attemptId) } : fresh.meta.lastRollover,
               lastClockMs: Math.max(fresh.meta.lastClockMs, nowMs),
               clockWarning: clockBack ? '端末の時刻が前回より戻っています。記録と翌日処理は巻き戻しません。' : fresh.meta.clockWarning,
@@ -156,7 +160,7 @@ export class AppService {
     // 競合が続いて保存できなかった場合も、移したことにしない
     if (!saved) return { moved: 0, recalc: null, saved: false };
     const after = await loadData(this.db);
-    const recalc = after.meta.planDirty || moved > 0 ? await this.recalculate() : null;
+    const recalc = after.meta.planDirty || moved > 0 || dateAdvanced ? await this.recalculate() : null;
     return { moved, recalc, saved: true };
   }
 }

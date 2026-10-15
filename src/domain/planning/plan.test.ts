@@ -413,6 +413,15 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')?.attemptId).toBe('g|1:0>1|0@3');
   });
 
+  it('取り消した再挑戦の後ろの今日の失敗も、翌日へ送る（同日の再挑戦は利用者の操作でだけ追加する）', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const failed = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'failure' });
+    const cancelledRetry = attempt({ attemptId: 'g|1:0>1|0@2', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', dayOrder: 2, outcome: 'none', lifecycle: 'cancelled' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [failed, cancelledRetry], settings: { weekdayLimits: [3, 3, 3, 3, 3, 3, 3] } }));
+    expect(plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')?.date).toBe('2026-10-15');
+  });
+
   it('失敗の翌日送りは実施日で判断する（今日の予定を昨日失敗したと記録したら、今日から再挑戦できる）', () => {
     const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
