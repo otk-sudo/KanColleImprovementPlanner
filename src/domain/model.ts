@@ -196,6 +196,9 @@ export interface DaySkip {
 /** 目標の個数の上限（バックアップの形式と同じ。これを超えると書き出したバックアップを復元できない） */
 export const MAX_GOAL_COUNT = 9999;
 
+/** 1回の記録で入力できる消費数の上限（桁が多すぎて無限大になる値などを保存しない） */
+export const MAX_RECORD_AMOUNT = 999_999;
+
 export const DEFAULT_SETTINGS: Settings = {
   weekdayLimits: [2, 2, 2, 2, 2, 2, 2],
   holidays: [],

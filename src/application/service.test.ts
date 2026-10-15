@@ -558,6 +558,32 @@ describe('レビュー指摘（PR #1）', () => {
     expect(handleCorrectResult(data, { eventId: 'A', newOutcome: 'success', newDeltas: [star(5, -1), star(6, 1)], occurredDateJst: '2026-10-12', historyOnlyScopes: [], reason: 'メモ', today: '2026-10-14', now: '' }).ok).toBe(true);
   });
 
+  it('消費量が有限の整数でない、または上限を超える記録・確認待ちは保存しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d = await s.load();
+    const a = d.attempts.find((x) => x.scheduledDate === s.today())!;
+    const bad = [{ scope: 'resource:8' as const, amount: -Infinity }];
+    const r = handleRecordResult(d, { ...(await recordPayload(s, a.attemptId, 'failure')), deltas: bad });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('INVALID_AMOUNT');
+    const draft = handleSaveDraft(d, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [{ scope: 'resource:8', amount: -1_000_000 }], unknownScopes: [], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' });
+    expect(draft.ok).toBe(false);
+  });
+
+  it('マスターの確認で計算を保留している間は、結果も確認待ちも保存しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const held = { ...d0, meta: { ...d0.meta, masterReviewRequired: true } };
+    const r = handleRecordResult(held, await recordPayload(s, a.attemptId, 'success'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('MASTER_REVIEW_REQUIRED');
+    const draft = handleSaveDraft(held, { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [], unknownScopes: ['resource:8'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' });
+    expect(draft.ok).toBe(false);
+  });
+
   it('削除した目標の工程には、同日の再挑戦を追加しない', async () => {
     const s = await service();
     await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });

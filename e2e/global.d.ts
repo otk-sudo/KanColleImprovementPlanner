@@ -7,6 +7,7 @@ declare global {
       restore(json: string): Promise<string>;
       state(): Promise<unknown>;
       recalc(): Promise<string>;
+      failRollover(times: number): void;
     };
   }
 }

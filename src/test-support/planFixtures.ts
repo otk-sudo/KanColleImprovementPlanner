@@ -85,6 +85,7 @@ export function planInput(spec: PlanSpec): PlanInput {
     daySkips: spec.daySkips ?? [],
     preferredHelpers: spec.preferredHelpers ?? [],
     drafts,
+    resultEvents: events,
   };
 }
 

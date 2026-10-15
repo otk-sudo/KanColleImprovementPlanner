@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FX, fixtureMaster, stage } from '../../test-support/fixtureMaster';
 import { attempt, goal, planInput } from '../../test-support/planFixtures';
 import type { MasterFile } from '../master/schema';
-import type { DraftResult } from '../model';
+import type { DraftResult, ResultEvent } from '../model';
 import { buildPlan, COMPUTATION_LIMITS } from './plan';
 
 const ALL = [0, 1, 2, 3, 4, 5, 6];
@@ -377,6 +377,32 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.steps.length).toBeLessThanOrEqual(COMPUTATION_LIMITS.maxSteps + 11);
     expect(plan.unplaced.some((p) => p.goalId === 'g' && p.reasons.includes('COMPUTATION_LIMIT'))).toBe(true);
     expect(plan.goals.find((x) => x.goalId === 'g')?.status).toBe('undetermined');
+  });
+
+  it('今日の実施枠は、結果の実施日で数える（繰越元を今日実施した記録は今日の枠を使い、別の日に記録した今日の予定は使わない）', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const ev = (id: string, attemptId: string, date: string): ResultEvent => ({ eventId: id, attemptId, stepKey: 'o', goalId: 'o', originalSequence: 1, revision: 1, status: 'active', outcome: 'failure', occurredDateJst: date, occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] });
+    const spec = { master: simpleMaster(), inventory: { equipment: [[1, 0, 1]] as [number, number, number][], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], settings: { weekdayLimits: [1, 1, 1, 1, 1, 1, 1] } };
+    // 昨日の予定（繰越元）を今日実施したと記録 → 今日の1枠を使う
+    const late = attempt({ attemptId: 'o|9:0>1|0@1', stepKey: 'o|9:0>1|0', goalId: 'o', transition: { kind: 'improve', equipmentId: 9, fromStar: 0, toStar: 1 }, scheduledDate: '2026-10-13', outcome: 'failure', lifecycle: 'superseded', resultEventId: 'e1' });
+    const lateToday = buildPlan(planInput({ ...spec, attempts: [late], events: [ev('e1', late.attemptId, '2026-10-14')] }));
+    expect(lateToday.placements.find((p) => p.goalId === 'g')?.date).toBe('2026-10-15');
+    // 今日の予定を昨日実施したと記録 → 今日の枠は空く
+    const back = { ...late, scheduledDate: '2026-10-14', lifecycle: 'active' as const };
+    const backdated = buildPlan(planInput({ ...spec, attempts: [back], events: [ev('e1', back.attemptId, '2026-10-13')] }));
+    expect(backdated.placements.find((p) => p.goalId === 'g')?.date).toBe('2026-10-14');
+  });
+
+  it('今日に固定した予定は、今日を休みにした・今日の上限を0にした場合も確認待ちにする（日付が変わるまで当日に残す）', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const fixedToday = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t, scheduledDate: '2026-10-14', helperShipId: 101 });
+    const spec = { master: simpleMaster(), inventory: { equipment: [[1, 0, 1]] as [number, number, number][], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [fixedToday] };
+    const gate = (settings: Parameters<typeof planInput>[0]['settings']) => buildPlan(planInput({ ...spec, settings })).placements.find((p) => p.attemptId === fixedToday.attemptId);
+    expect(gate({})?.executionGate).toBe('ready');
+    const holiday = gate({ holidays: [{ holidayId: 'h', start: '2026-10-14', end: '2026-10-14' }] });
+    expect([holiday?.date, holiday?.executionGate]).toEqual(['2026-10-14', 'reviewRequired']);
+    expect(gate({ weekdayLimits: [2, 2, 2, 0, 2, 2, 2] })?.executionGate).toBe('reviewRequired'); // 水曜を0
   });
 
   it('今日に固定した予定でも、担当艦が今日の曜日に担当できなくなったら確認待ちにする', () => {

@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { sameOriginImageBase } from './imageBase';
 
 // ゲーム画像の表示（R22）。画像の配布条件が未確認のため、既定では画像を同梱・直リンクしない。
-// VITE_IMAGE_BASE_URL を設定した場合だけ読み込み、失敗・未設定でも名称と操作を維持する。
+// VITE_IMAGE_BASE_URL（同じサイトの相対パス）を設定した場合だけ読み込み、失敗・未設定でも名称と操作を維持する。
+// 別のサイトの URL は使わない（画像のパスに装備・艦のIDが入るため）。
 
-const BASE = (import.meta.env.VITE_IMAGE_BASE_URL ?? '').replace(/\/$/, '');
+const BASE = sameOriginImageBase(import.meta.env.VITE_IMAGE_BASE_URL ?? '');
 
 export const IMAGES_ENABLED = BASE.length > 0;
 

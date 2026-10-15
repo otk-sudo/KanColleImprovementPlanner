@@ -16,7 +16,7 @@ import {
 import type { Attempt, ExecutionGate, Goal, GuaranteeMode } from '../model';
 import { allocateGoals, createPool, goalOrder, materialAvailableAfterGoals, stepsToEnd, validRoute, type ChainStart, type GoalAllocation, type Pool, type ReservedTarget } from './allocate';
 import { helperInfo, type HelperInfo } from './helpers';
-import { schedule, type FixedSlot, type SchedStep } from './schedule';
+import { dayLimit, holidaySet, schedule, type FixedSlot, type SchedStep } from './schedule';
 import type {
   AttemptChanges,
   BucketUsage,
@@ -492,7 +492,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     o.maxOrder = Math.max(o.maxOrder, order);
     occupied.set(d, o);
   };
-  // 当日の枠：成功・失敗・下書き・スキップ・未実施予定はすべて1枠を使う（design/09）
+  // 当日の枠：成功・失敗・下書き・スキップ・未実施予定はすべて1枠を使う（design/09）。
+  // 結果・確認待ちは実施日の枠を使う（繰越元を今日実施した記録は今日、今日の予定を別の日に実施した記録は今日を使わない）
   for (const a of todays) {
     if (a.outcome === 'none' && a.lifecycle === 'active') {
       if (stepByKey.has(a.stepKey) && latestOf(a.stepKey)?.attemptId === a.attemptId) {
@@ -500,8 +501,23 @@ export function buildPlan(input: PlanInput): PlanResult {
       } else {
         orphanToday.push(a);
       }
+      occupy(today, a.dayOrder);
     }
-    if (a.outcome !== 'none' || a.lifecycle === 'active') occupy(today, a.dayOrder);
+  }
+  const eventById = new Map((input.resultEvents ?? []).map((e) => [e.eventId, e]));
+  /** 結果・確認待ちの実施日と実施順 */
+  const occurrence = (a: Attempt): { date: DateJst | null; order: number } | null => {
+    const draft = a.outcome === 'draft' ? input.drafts.find((d) => d.attemptId === a.attemptId && d.status === 'open') : undefined;
+    if (draft) return { date: draft.occurredDateJst, order: draft.occurredOrder };
+    const event = a.resultEventId ? eventById.get(a.resultEventId) : undefined;
+    if (event && event.status === 'active') return { date: event.occurredDateJst, order: event.occurredOrder };
+    // 実績の一覧を渡さない呼び出しでは、繰り越していない試行を予定日で数える
+    return input.resultEvents || a.lifecycle === 'superseded' ? null : { date: a.scheduledDate, order: a.dayOrder };
+  };
+  for (const a of input.attempts) {
+    if (a.lifecycle === 'cancelled' || a.outcome === 'none') continue;
+    const at = occurrence(a);
+    if (at && at.date === today) occupy(today, at.order);
   }
 
   const schedSteps: SchedStep[] = steps.map((s) => ({
@@ -586,11 +602,17 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   // 実行可否（当日の前提待ち・担当艦の不一致）
   const todayWeekday = weekdayOf(today);
+  // 今日を休みにした・今日の上限を0にした場合、今日に固定した予定は当日に残したまま実行不可にする
+  const todayClosed = dayLimit(input.settings, holidaySet(input.settings, today, today), today) === 0;
   const placementByKey = new Map(placements.filter((p) => !orphanToday.some((o) => o.attemptId === p.attemptId)).map((p) => [p.stepKey, p]));
   for (const p of placements) {
     if (p.executionGate === 'reviewRequired' || p.date !== today) continue;
     const s = stepByKey.get(p.stepKey);
     if (!s) continue;
+    if (p.fixed && todayClosed) {
+      p.executionGate = 'reviewRequired';
+      continue;
+    }
     // 固定した担当艦が、今も候補にあり今日の曜日に担当できるか（優先担当艦の変更・マスター更新で曜日が変わる場合）
     if (p.fixed && p.helperShipId !== null && !s.helperCandidates.some((c) => c.shipId === p.helperShipId && c.days.includes(todayWeekday))) {
       p.executionGate = 'reviewRequired';

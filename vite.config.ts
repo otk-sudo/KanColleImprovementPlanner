@@ -2,11 +2,12 @@ import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { sameOriginImageBase } from './src/ui/imageBase';
 
 // 本番ビルドだけに Content-Security-Policy を付ける（開発サーバーの HMR はインラインスクリプトを使うため）。
-// 所持データを外部へ送らないよう connect-src は自サイトのみ。画像の配信元を設定した場合だけ img-src に加える。
-function cspPlugin(imageOrigin: string | null): Plugin {
-  const img = ["'self'", 'data:', 'blob:', ...(imageOrigin ? [imageOrigin] : [])].join(' ');
+// 所持データを外部へ送らないよう connect-src は自サイトのみ。画像も自サイトだけ（装備・艦のIDを別のサイトへ送らない）。
+function cspPlugin(): Plugin {
+  const img = ["'self'", 'data:', 'blob:'].join(' ');
   const policy = [
     "default-src 'self'",
     "script-src 'self'",
@@ -46,11 +47,13 @@ function excludeLocalImages(): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   const imageBase = env.VITE_IMAGE_BASE_URL ?? '';
-  let imageOrigin: string | null = null;
-  if (/^https?:\/\//.test(imageBase)) imageOrigin = new URL(imageBase).origin;
+  // 画像のパスには装備・艦のIDが入るため、別のサイトの配信元は使わない（同じサイトの相対パスだけ）
+  if (imageBase.trim() !== '' && sameOriginImageBase(imageBase) === '') {
+    throw new Error(`VITE_IMAGE_BASE_URL には同じサイトの相対パスを指定してください（別のサイトへ装備・艦のIDを送らないため）：${imageBase}`);
+  }
   return {
     base: './',
-    plugins: [react(), cspPlugin(imageOrigin), excludeLocalImages()],
+    plugins: [react(), cspPlugin(), excludeLocalImages()],
     define: {
       __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
     },

@@ -3,7 +3,7 @@ import type { ImportKind } from '../domain/import/parse';
 import { projectInventory } from '../domain/inventory/projection';
 import { bucketKey, type ScopeKey, type ScopeUpdate } from '../domain/inventory/types';
 import { compareDate, isValidDate, type DateJst } from '../domain/jst';
-import { MAX_GOAL_COUNT, type Attempt, type Delta, type DraftResult, type Goal, type Holiday, type Outcome, type Protection, type RecipeSnapshot, type ResultEvent, type ResultRevision, type Settings } from '../domain/model';
+import { MAX_GOAL_COUNT, MAX_RECORD_AMOUNT, type Attempt, type Delta, type DraftResult, type Goal, type Holiday, type Outcome, type Protection, type RecipeSnapshot, type ResultEvent, type ResultRevision, type Settings } from '../domain/model';
 import { fixedHistoryOnlyScopes, happenedBefore, inferInputSources, scopesOfDeltas, validateCorrection, wouldGoNegative } from '../domain/results/results';
 import type { BackupData } from '../domain/backup';
 import type { Meta } from '../infrastructure/db';
@@ -238,6 +238,13 @@ function chronologyShortfall(data: AppData, others: ResultEvent[], deltas: Delta
   return out;
 }
 
+/** 増減の数量が有限の整数で上限以内か（不正な値を保存してバックアップを復元できなくしない） */
+function invalidAmount(deltas: Delta[]): boolean {
+  return deltas.some((d) => !Number.isSafeInteger(d.amount) || Math.abs(d.amount) > MAX_RECORD_AMOUNT);
+}
+const MASTER_REVIEW_MESSAGE = '共通マスターの更新を確認するまで、改修結果は記録できません。設定の「共通マスター」で確認してから記録してください。';
+const INVALID_AMOUNT_MESSAGE = `消費数は0〜${MAX_RECORD_AMOUNT.toLocaleString('ja-JP')}の整数で入力してください。`;
+
 function seqOf(a: Attempt): number {
   return Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1)) || 0;
 }
@@ -254,6 +261,9 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   if (!isValidDate(p.occurredDateJst) || compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には結果を記録できません。ゲームで実施した日を選んでください。');
   if (p.outcome === 'skip' && (attempt.scheduledDate !== p.today || p.occurredDateJst !== p.today)) return fail('SKIP_NOT_TODAY', 'スキップは当日の未実施の予定だけに記録できます。');
   if (p.outcome === 'skip' && p.deltas.length > 0) return fail('SKIP_HAS_CONSUMPTION', 'スキップでは資材・装備を消費しません。');
+  if (invalidAmount(p.deltas)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
+  // マスター更新の確認待ちの間は、承認していないマスターの条件で結果を保存しない
+  if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
   // 下書きの確定は日付が変わっても前提待ちを確認する
   if (attempt.executionGate === 'predecessorPending' && p.outcome !== 'skip' && (attempt.scheduledDate === p.today || p.fromDraftId !== null)) return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程の結果は確定できません。');
 
@@ -377,6 +387,8 @@ export interface SaveDraftPayload {
 }
 export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResult<{ draftId: string }> {
   if (!p.confirmedPerformed) return fail('NOT_CONFIRMED', '「ゲームで実施済み」を確認してから保存してください。');
+  if (invalidAmount(p.knownConsumptions)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
+  if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
   const attempt = data.attempts.find((a) => a.attemptId === p.attemptId);
   if (!attempt) return fail('ATTEMPT_NOT_FOUND', '対象の予定が見つかりません。');
   if (attempt.outcome !== 'none' && attempt.outcome !== 'draft') return fail('ALREADY_RECORDED', 'この予定には既に結果が記録されています。');
@@ -434,6 +446,7 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const e = data.resultEvents.find((x) => x.eventId === p.eventId);
   if (!e || e.status !== 'active') return fail('EVENT_NOT_FOUND', '訂正対象の記録が見つかりません。');
   if (compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には記録できません。');
+  if (invalidAmount(p.newDeltas)) return fail('INVALID_AMOUNT', INVALID_AMOUNT_MESSAGE);
   const attempt = data.attempts.find((a) => a.attemptId === e.attemptId);
   const others = data.resultEvents.filter((x) => x.eventId !== e.eventId);
   // 実施日を変えたら、その日の記録の後ろ（予定どおりの日なら予定の順番）に日内順を付け直す

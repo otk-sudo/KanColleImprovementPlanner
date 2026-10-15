@@ -321,7 +321,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
             {attempt.executionGate === 'predecessorPending' ? <p className="rec-warn-sub">前の工程の結果が確定していないため、この工程の結果はまだ確定できません。</p> : null}
             {reviewBlocked ? <p className="rec-warn-sub">この予定は所持データとの確認待ちです。取り込み前に実施した記録漏れなら下のチェックを付け、装備を履歴のみとして記録してください。</p> : null}
             {negative.length > 0 ? <p className="rec-warn-sub">記録すると所持数が負になる項目があります（{negative.map((s) => costKeyPlain(master, s)).join('・')}）。所持データが最新か確認してください。</p> : null}
-            {result.invalid.length > 0 ? <p className="rec-warn-sub">数量は0以上の整数で入力してください（{result.invalid.join('・')}）。</p> : null}
+            {result.invalid.length > 0 ? <p className="rec-warn-sub">数量は0〜999,999の整数で入力してください（{result.invalid.join('・')}）。</p> : null}
           </div>
           <div className="rec-date-row">
             <label htmlFor="rec-date">実施日</label>

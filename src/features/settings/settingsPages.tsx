@@ -238,6 +238,19 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   const [message, setMessage] = useState<string | null>(null);
   const [epoch] = useState(() => newId('epoch'));
   const commandId = useCommandId(session?.fileName, confirmHold);
+  // 復元後の日付変更の処理を保存できなかった場合は、完了と表示せず再試行を求める（復元自体は保存済み）
+  const [rolloverRetry, setRolloverRetry] = useState<{ masterMissing: boolean } | null>(null);
+  const finishRestore = async (masterMissing: boolean) => {
+    const rolled = await service.rollover();
+    await refresh();
+    if (!rolled.saved) {
+      setRolloverRetry({ masterMissing });
+      return;
+    }
+    setRolloverRetry(null);
+    setNotice(masterMissing ? 'バックアップを復元しました。必要なマスターの確認が終わるまで予定の再計算を保留しています。' : 'バックアップを復元しました。');
+    navigate('/calendar');
+  };
   const preSave = () => {
     const now = new Date().toISOString();
     download(`before-restore-${backupFileName(now)}`, exportBackup(data, data.meta.activeMasterVersion ?? master.version, __APP_VERSION__, now));
@@ -249,11 +262,22 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
     const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, confirmedPlanHold: session.holdConfirmed || confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
     if (!r.ok) return setMessage(r.message);
     formCache.delete('restore');
-    await service.rollover();
-    await refresh();
-    setNotice(session.check.masterMissing ? 'バックアップを復元しました。必要なマスターの確認が終わるまで予定の再計算を保留しています。' : 'バックアップを復元しました。');
-    navigate('/calendar');
+    await finishRestore(session.check.masterMissing);
   };
+  if (rolloverRetry) {
+    return (
+      <Page nav="settings" title="バックアップを復元" top={196}>
+        <div className="banner banner-warn page-alert" role="alert">
+          バックアップは復元しましたが、日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してから再試行してください。
+        </div>
+        <section className="card restore-card">
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void finishRestore(rolloverRetry.masterMissing)}>
+            日付変更の処理を再試行
+          </button>
+        </section>
+      </Page>
+    );
+  }
   if (!session) {
     return (
       <Page nav="settings" title="バックアップを復元" top={196} sub="復元する範囲と日時を確認してください。">

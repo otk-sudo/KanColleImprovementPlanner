@@ -11,6 +11,8 @@ declare global {
       restore(json: string): Promise<string>;
       state(): Promise<unknown>;
       recalc(): Promise<string>;
+      /** 次の n 回の翌日処理を「保存できなかった」にする（保存失敗の表示の確認用） */
+      failRollover(times: number): void;
     };
   }
 }
@@ -35,6 +37,17 @@ export function installTestHooks(service: AppService): void {
     },
     async recalc() {
       return service.recalculate();
+    },
+    failRollover(times: number) {
+      let left = times;
+      const original = service.rollover.bind(service);
+      service.rollover = async () => {
+        if (left > 0) {
+          left--;
+          return { moved: 0, recalc: null, saved: false };
+        }
+        return original();
+      };
     },
   };
 }

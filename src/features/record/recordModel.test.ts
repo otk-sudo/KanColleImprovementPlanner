@@ -5,7 +5,7 @@ import { buildMasterIndex } from '../../domain/master';
 import { FX, fixtureMaster } from '../../test-support/fixtureMaster';
 import { baselinesFrom } from '../../test-support/planFixtures';
 import type { PlannedCost } from '../../domain/model';
-import { plannedForAttempt, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
+import { parseCount, plannedForAttempt, snapshotForDraft, consumedDeltas, consumptionRows, correctionEffect, deltasFromForm, savedValues, valuesFromDeltas, type RecordForm } from './recordModel';
 
 const eq = (equipmentId: number, star: number, amount: number): Delta => ({ scope: 'equipment', equipmentId, star, amount });
 
@@ -140,5 +140,16 @@ describe('入力行の元にする予定の費用', () => {
     // マスター更新で素材が消えても、再開した下書きは保存時の素材の行を出す
     expect(plannedForAttempt({ eventPlanned: null, draftPlanned: old, cost, mode: 'normal' })).toBe(old);
     expect(plannedForAttempt({ eventPlanned: null, draftPlanned: null, cost, mode: 'guaranteed' })).toMatchObject({ devmats: 2, screws: 4 });
+  });
+});
+
+describe('消費数の入力', () => {
+  it('0以上の整数で、1回の記録の上限（999,999）以内だけを受け付ける（桁が多すぎて無限大になる値を通さない）', () => {
+    expect(parseCount('3')).toBe(3);
+    expect(parseCount('999999')).toBe(999999);
+    expect(parseCount('1000000')).toBeNaN();
+    expect(parseCount('9'.repeat(400))).toBeNaN();
+    expect(parseCount('-1')).toBeNaN();
+    expect(parseCount(' ')).toBeNull();
   });
 });

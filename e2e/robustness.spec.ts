@@ -191,6 +191,25 @@ test('A10：バックアップを書き出し、変更後に復元すると全�
   expect((await state(page)).baselines.find((x) => x.scope === 'resource:8')?.value).toBe(10);
 });
 
+test('A10：復元後の日付変更の処理を保存できなければ、完了と表示せず再試行できる', async ({ page }) => {
+  await start(page, { data: seed, route: '/settings' });
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'バックアップを書き出す' }).click();
+  const json = readFileSync(await (await download).path(), 'utf8');
+  await page.locator('input[type=file]').setInputFiles({ name: 'kaishu-backup.json', mimeType: 'application/json', buffer: Buffer.from(json, 'utf8') });
+  await page.waitForURL(/#\/settings\/restore$/);
+  const pre = page.waitForEvent('download');
+  await page.getByRole('button', { name: '復元前の保存へ進む' }).click();
+  await pre;
+  await page.evaluate(() => window.__kaishu!.failRollover(1));
+  await page.getByRole('button', { name: 'この内容で復元する' }).click();
+  await expect(page.getByText('バックアップは復元しましたが、日付変更の処理（未完了の予定の繰越）を保存できませんでした。')).toBeVisible();
+  await expect(page.getByText('バックアップを復元しました。')).toHaveCount(0);
+  await page.getByRole('button', { name: '日付変更の処理を再試行' }).click();
+  await page.waitForURL(/#\/calendar/);
+  await expect(page.getByText('バックアップを復元しました。')).toBeVisible();
+});
+
 test('A10：壊れたバックアップは部分的にも復元せず、現在のデータを保つ', async ({ page }) => {
   await start(page, { data: seed, route: '/settings' });
   const before = await state(page);

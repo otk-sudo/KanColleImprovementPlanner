@@ -1,7 +1,7 @@
 import type { InventoryProjection } from '../inventory/projection';
 import type { DateJst } from '../jst';
 import type { AttemptCost, MasterIndex, Transition } from '../master';
-import type { Attempt, DaySkip, DraftResult, ExecutionGate, Goal, GuaranteeMode, PreferredHelper, Protection, Settings } from '../model';
+import type { Attempt, DaySkip, DraftResult, ExecutionGate, Goal, GuaranteeMode, PreferredHelper, Protection, Settings, ResultEvent } from '../model';
 
 export interface PlanInput {
   master: MasterIndex;
@@ -14,6 +14,8 @@ export interface PlanInput {
   daySkips: DaySkip[];
   preferredHelpers: PreferredHelper[];
   drafts: DraftResult[];
+  /** 実績（当日の実施枠を実施日で数えるため）。省略時は予定日で数える */
+  resultEvents?: ResultEvent[];
 }
 
 /** 未配置理由（design/09）。資材不足は警告であり、この一覧に含めない。 */

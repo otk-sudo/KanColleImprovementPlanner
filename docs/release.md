@@ -7,7 +7,7 @@
 | 項目 | 状態 | 公開への影響 |
 |---|---|---|
 | 共通マスター出典（Tibowl/api_start2、ElectronicObserverEN/Data）の配布条件 | 未確認（ライセンス表記なし） | 公開サイトは生成したマスター（public/master）を配信する。配布条件を確認するか、権利者の許諾・代替出典が必要 |
-| ゲーム画像 | 配布条件未確認 | 既定のまま非表示（VITE_IMAGE_BASE_URL を設定しない）。表示する場合は配信元と条件を確認 |
+| ゲーム画像 | 配布条件未確認 | 既定のまま非表示（VITE_IMAGE_BASE_URL を設定しない）。表示する場合は配信元と条件を確認。画像のパスに装備・艦のIDが入るため、同じサイトの相対パスだけを指定できる（別サイトの URL はビルドで拒否） |
 | 実機確認（A02・A11・A13） | 未実施 | Chrome/Edge と 74式EN の実レスポンス取り込み、Windows 実機の目視、ゲーム側の手順撮影 |
 | Codex レビュー | PR の最新 head SHA で「指摘なし」が必要 | development-workflow.md のマージゲート |
 | main へのマージ | 利用者の許可が必要 | squash マージ、`--match-head-commit` に完全な SHA を指定 |

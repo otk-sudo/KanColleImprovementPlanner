@@ -3,7 +3,7 @@ import { equipmentStars } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
 import type { DateJst } from '../../domain/jst';
 import type { AttemptCost, MasterIndex, Transition } from '../../domain/master';
-import type { Delta, GuaranteeMode, PlannedCost, RecipeSnapshot } from '../../domain/model';
+import { MAX_RECORD_AMOUNT, type Delta, type GuaranteeMode, type PlannedCost, type RecipeSnapshot } from '../../domain/model';
 import type { ConsumedItem } from '../../domain/planning/types';
 import { buildDeltas, type ConsumptionInput } from '../../domain/results/results';
 
@@ -153,10 +153,12 @@ export function savedValues(deltas: Delta[], transition: Transition, outcome: st
   return v;
 }
 
+/** 消費数の入力。未入力は null、0〜上限の整数以外は NaN（不正） */
 export function parseCount(v: string | undefined): number | null {
   if (v === undefined || v.trim() === '') return null;
   if (!/^\d+$/.test(v.trim())) return NaN;
-  return Number(v.trim());
+  const n = Number(v.trim());
+  return Number.isSafeInteger(n) && n <= MAX_RECORD_AMOUNT ? n : NaN;
 }
 
 /** 入力値から増減を作る。未入力の行は unknown に入れる */

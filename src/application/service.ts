@@ -73,6 +73,7 @@ export class AppService {
       daySkips: data.daySkips,
       preferredHelpers: data.preferredHelpers,
       drafts: data.drafts,
+      resultEvents: data.resultEvents,
     });
   }
 
