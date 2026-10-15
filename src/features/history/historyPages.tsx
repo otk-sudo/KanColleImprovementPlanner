@@ -5,7 +5,7 @@ import { useCommandId, useStore } from '../../app/store';
 import { handleCancelDraft } from '../../application/commands';
 import { compareDate, formatShortDate } from '../../domain/jst';
 import type { Attempt, ResultEvent } from '../../domain/model';
-import { transitionLabel } from '../../ui/format';
+import { recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import './history.css';
 
 // 実績・繰り越し（S09）・過去の記録と後続予定（S29）・確認待ちの記録を訂正（S31）。
@@ -89,7 +89,7 @@ export function HistoryPage() {
               r.kind === 'event' ? (
                 <li key={r.key} className="hist-row">
                   <span className="hist-date">{formatShortDate(r.date)}</span>
-                  <span className="hist-label">{r.event.recipeSnapshot ? transitionLabel(master, r.event.recipeSnapshot.transition) : (attemptsById.get(r.event.attemptId) && transitionLabel(master, attemptsById.get(r.event.attemptId)!.transition)) || r.event.stepKey}</span>
+                  <span className="hist-label">{r.event.recipeSnapshot ? recordedTransitionLabel(master, r.event.recipeSnapshot.transition, r.event.recipeSnapshot) : (attemptsById.get(r.event.attemptId) && transitionLabel(master, attemptsById.get(r.event.attemptId)!.transition)) || r.event.stepKey}</span>
                   <span className={`hist-status ${r.event.status === 'voided' ? 'text-sub' : r.event.outcome === 'success' ? 'text-ok' : r.event.outcome === 'failure' ? 'text-fail' : 'text-sub'}`}>
                     {r.event.status === 'voided' ? '取り消し済み' : r.event.outcome === 'success' ? '成功' : r.event.outcome === 'failure' ? '失敗' : 'スキップ'}
                     {r.event.revision > 1 ? <span className="hist-rev">（訂正{r.event.revision - 1}回）</span> : null}

@@ -1,7 +1,7 @@
 import type { ScopeKey } from '../domain/inventory/types';
 import { MAX_STAR } from '../domain/ids';
 import type { AttemptCost, MasterIndex, Transition } from '../domain/master';
-import type { GuaranteeMode, PlannedCost } from '../domain/model';
+import type { GuaranteeMode, PlannedCost, RecipeSnapshot } from '../domain/model';
 import type { CostKey } from '../domain/planning/types';
 import { costItems } from '../domain/planning/plan';
 
@@ -18,6 +18,14 @@ export function equipLabel(m: MasterIndex, equipmentId: number, star?: number): 
 export function transitionLabel(m: MasterIndex, t: Transition): string {
   if (t.kind === 'improve') return `${m.equipmentName(t.equipmentId)} ${starText(t.fromStar)} → ${starText(t.toStar)}`;
   return `${m.equipmentName(t.equipmentId)} ${starText(MAX_STAR)} → ${m.equipmentName(t.toEquipmentId)} ${starText(t.toStar)}（更新）`;
+}
+
+/** 過去の記録の工程名。記録時の名称（recipeSnapshot）を優先し、マスター更新で装備が消えても当時の名前で示す（P30） */
+export function recordedTransitionLabel(m: MasterIndex, t: Transition, snapshot: Pick<RecipeSnapshot, 'fromName' | 'toName'> | null): string {
+  const fromName = snapshot?.fromName || m.equipmentName(t.equipmentId);
+  if (t.kind === 'improve') return `${fromName} ${starText(t.fromStar)} → ${starText(t.toStar)}`;
+  const toName = snapshot?.toName || m.equipmentName(t.toEquipmentId);
+  return `${fromName} ${starText(MAX_STAR)} → ${toName} ${starText(t.toStar)}（更新）`;
 }
 
 export function transitionShort(t: Transition): string {

@@ -127,21 +127,33 @@
   white-space: pre;
 }
 
+/* 画像枠は設計の画像領域（高さ 367px）に合わせ、画像は縦横比を保って中央に置く */
 .guide-shot {
-  position: relative;
-  display: block;
-  margin: 22px 0 0 4px;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 367px;
+  margin: 26px 0 0 4px;
+  padding: 10px;
   border: none;
-  background: none;
+  border-radius: var(--radius-card);
+  background: #e3e9ec;
   cursor: zoom-in;
   width: calc(100% - 4px);
 }
 
+.guide-shot-frame {
+  position: relative;
+  display: block;
+  height: 100%;
+}
+
 .guide-shot img {
   display: block;
-  width: 100%;
-  border-radius: var(--radius-card);
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  border-radius: 6px;
   box-shadow: 0 0 0 1px var(--line);
 }
 

@@ -29,7 +29,13 @@ export async function loadMaster(baseUrl = import.meta.env.BASE_URL): Promise<{ 
   if (hash !== null && hash !== manifest.sha256.toUpperCase()) {
     throw new MasterLoadError('共通マスターの内容が目録のハッシュと一致しません。ページを再読み込みしてください。解決しない場合は配布物の更新途中の可能性があります。');
   }
-  const parsed = masterSchema.safeParse(JSON.parse(new TextDecoder().decode(buf)));
+  let json: unknown;
+  try {
+    json = JSON.parse(new TextDecoder().decode(buf));
+  } catch {
+    throw new MasterLoadError('共通マスターの形式が不正です（JSON として読めません）。');
+  }
+  const parsed = masterSchema.safeParse(json);
   if (!parsed.success) throw new MasterLoadError('共通マスターの形式が不正です。');
   if (parsed.data.masterVersion !== manifest.masterVersion) throw new MasterLoadError('共通マスターの版が目録と一致しません。');
   return { master: buildMasterIndex(parsed.data), manifest };

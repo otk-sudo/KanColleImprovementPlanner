@@ -10,9 +10,9 @@ import { transitionOptions, transitionTo, transitionFrom } from '../../domain/ma
 import type { Attempt, RecipeSnapshot, ResultEvent } from '../../domain/model';
 import { fixedHistoryOnlyScopes, scopesOfDeltas, wouldGoNegative } from '../../domain/results/results';
 import { newId, type AppData } from '../../infrastructure/repository';
-import { costKeyPlain, transitionLabel } from '../../ui/format';
+import { costKeyPlain, recordedTransitionLabel, transitionLabel } from '../../ui/format';
 import { DateBox } from '../../ui/SelectBox';
-import { consumptionRows, deltasFromForm, parseCount, plannedFrom, valuesFromDeltas, type RecordForm } from './recordModel';
+import { consumptionRows, correctionEffect, deltasFromForm, parseCount, plannedFrom, valuesFromDeltas, type RecordForm } from './recordModel';
 import './record.css';
 
 // 改修結果の記録（S13）・実施済み確認待ち（S28）・過去実績の scope 確認（S34）。design/10・12、ui-design-v1 第4巡・第12巡。
@@ -204,6 +204,11 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const to = transitionTo(attempt.transition);
   const ownedFrom = projection.equipment.counts.get(`${from.equipmentId}:${from.star}`) ?? 0;
   const ownedTo = projection.equipment.counts.get(`${to.equipmentId}:${to.star}`) ?? 0;
+  // 訂正は旧増減を戻した正味の変化。取り込み済みの基準に含まれる記録は現在数を変えない（P47/P50）
+  const oldDeltas = mode === 'correct' && event && event.status === 'active' ? event.deltas.filter((d) => !event.historyOnlyScopes.includes(d.scope)) : [];
+  const newDeltas = form.outcome === 'voided' ? [] : result.deltas;
+  const fixedScopes = mode === 'correct' && event ? fixedHistoryOnlyScopes(event, scopesOfDeltas([...event.deltas, ...newDeltas]), data.baselines) : [];
+  const effect = correctionEffect({ newDeltas, oldDeltas, fixedScopes }, from.equipmentId, from.star, to.equipmentId, to.star);
   return (
     <Page nav={mode === 'correct' ? 'history' : 'calendar'} top={196} title={title} sub={mode === 'correct' ? '保存済みの結果を訂正します。訂正前の内容は履歴に残ります。' : '実際にゲームで行った結果を記録します。'}>
       {message ? (
@@ -213,7 +218,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
             <ul>
               {message.details.map((d) => (
                 <li key={d.eventId}>
-                  {d.occurredDateJst} {d.recipeSnapshot ? transitionLabel(master, d.recipeSnapshot.transition) : d.stepKey}（{d.outcome === 'success' ? '成功' : d.outcome === 'failure' ? '失敗' : 'スキップ'}）{' '}
+                  {d.occurredDateJst} {d.recipeSnapshot ? recordedTransitionLabel(master, d.recipeSnapshot.transition, d.recipeSnapshot) : d.stepKey}（{d.outcome === 'success' ? '成功' : d.outcome === 'failure' ? '失敗' : 'スキップ'}）{' '}
                   <Link to={`/history/events/${encodeURIComponent(d.eventId)}/correct`}>この記録を修正</Link>
                 </li>
               ))}
@@ -319,11 +324,17 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
           ) : (
             <>
               <p className="rec-effect-lead text-ok">{form.outcome === 'success' ? '成功：改修値が進みます' : form.outcome === 'failure' ? '失敗：改修値は据え置き' : form.outcome === 'voided' ? '記録を取り消します' : 'スキップ：消費なし'}</p>
-              {form.outcome === 'success' ? (
+              {effect.kind === 'historyOnly' ? (
                 <p className="rec-effect-h">
-                  {master.equipmentName(from.equipmentId)} ★{from.star}：{ownedFrom} → {ownedFrom - 1}
+                  現在の所持数は変わりません（最新の取り込みに含まれる記録のため、履歴だけ訂正します）。
                   <br />
-                  {master.equipmentName(to.equipmentId)} ★{to.star}：{ownedTo} → {ownedTo + 1}
+                  当時の所持数は記録がないため検証できません。
+                </p>
+              ) : effect.kind === 'change' ? (
+                <p className="rec-effect-h">
+                  {master.equipmentName(from.equipmentId)} ★{from.star}：{ownedFrom} → {ownedFrom + effect.from}
+                  <br />
+                  {master.equipmentName(to.equipmentId)} ★{to.star}：{ownedTo} → {ownedTo + effect.to}
                 </p>
               ) : (
                 <p className="rec-effect-h">{form.outcome === 'failure' ? '★は変わりません' : '所持数・★は変わりません'}</p>

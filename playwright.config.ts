@@ -31,5 +31,7 @@ export default defineConfig({
     { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 940 } } },
     // 参照PNG（Penpot書き出し）と同じグレースケールの文字描画で比較する
     { name: 'screens', testMatch: /screens\.capture\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 940 }, deviceScaleFactor: 1, launchOptions: { args: ['--disable-lcd-text', '--font-render-hinting=none'] } } },
+    // 取り込みガイドに載せるアプリ画面（架空データ）を public/guide/ へ撮影する
+    { name: 'guide', testMatch: /guide\.capture\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 940 }, deviceScaleFactor: 1 } },
   ],
 });

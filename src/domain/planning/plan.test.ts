@@ -224,6 +224,33 @@ describe('当日の固定・スキップ・失敗', () => {
     expect(plan.attemptChanges.cancel).toEqual([]);
   });
 
+  it('P25：同日 A→B の A をスキップすると、B は当日に残して前提待ち（自動で翌日へ移さない）', () => {
+    const t12 = { kind: 'improve' as const, equipmentId: 1, fromStar: 1, toStar: 2 };
+    const skipA = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'skip', dayOrder: 1 });
+    const b = attempt({ attemptId: 'g|1:1>2|0@1', stepKey: 'g|1:1>2|0', goalId: 'g', transition: t12, scheduledDate: '2026-10-14', dayOrder: 2, predecessorAttemptId: skipA.attemptId });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [skipA, b], settings: { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] } }));
+    const kept = plan.placements.find((p) => p.attemptId === b.attemptId)!;
+    expect(kept.date).toBe('2026-10-14');
+    expect(kept.executionGate).toBe('predecessorPending');
+    expect(plan.attemptChanges.cancel).toEqual([]);
+    // A の次回は翌日以降の見込み（当日枠を自動補充しない）
+    const nextA = plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')!;
+    expect(nextA.date).toBe('2026-10-15');
+  });
+
+  it('P26：A 失敗後に同日再挑戦で成功したら、日上限内の B は前提待ちを解除する', () => {
+    const t12 = { kind: 'improve' as const, equipmentId: 1, fromStar: 1, toStar: 2 };
+    const failA = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'failure', dayOrder: 1, lifecycle: 'superseded' });
+    const retryA = attempt({ attemptId: 'g|1:0>1|0@2', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', outcome: 'success', dayOrder: 2, predecessorAttemptId: null });
+    const b = attempt({ attemptId: 'g|1:1>2|0@1', stepKey: 'g|1:1>2|0', goalId: 'g', transition: t12, scheduledDate: '2026-10-14', dayOrder: 3, predecessorAttemptId: failA.attemptId, executionGate: 'predecessorPending' });
+    // A の成功で X は★1 になっている
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 1, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [failA, retryA, b], settings: { weekdayLimits: [3, 3, 3, 3, 3, 3, 3] } }));
+    const kept = plan.placements.find((p) => p.attemptId === b.attemptId)!;
+    expect(kept.date).toBe('2026-10-14');
+    expect(kept.executionGate).toBe('ready');
+    expect(plan.attemptChanges.update.find((u) => u.attemptId === b.attemptId)?.executionGate ?? 'ready').toBe('ready');
+  });
+
   it('日全体スキップの日には新しい予定を置かない', () => {
     const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], daySkips: [{ date: '2026-10-14', createdAt: '' }] }));
     expect(plan.placements.every((p) => p.date !== '2026-10-14')).toBe(true);

@@ -88,12 +88,14 @@ export function GuideStepsPage() {
           {image ? (
             <>
               <button type="button" className="guide-shot" onClick={() => dialog.current?.showModal()} aria-label="画像を拡大する">
-                <img src={image.src} alt={image.alt} onError={() => setFailed(image.src)} />
-                {image.annotations.map((a) => (
-                  <span key={a.n} className="guide-mark" style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%` }}>
-                    <span className="guide-mark-no">{a.n}</span>
-                  </span>
-                ))}
+                <span className="guide-shot-frame">
+                  <img src={image.src} alt={image.alt} onError={() => setFailed(image.src)} />
+                  {image.annotations.map((a) => (
+                    <span key={a.n} className="guide-mark" style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%` }}>
+                      <span className="guide-mark-no">{a.n}</span>
+                    </span>
+                  ))}
+                </span>
               </button>
               <p className="guide-shot-note text-sub">
                 {step.desc} 画像をクリックすると拡大します。出典：{image.source}

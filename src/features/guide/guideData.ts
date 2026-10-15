@@ -1,4 +1,5 @@
 // 取り込みガイドの内容（R06・R23）。実機で確認していない操作は「未撮影」と明示し、架空の実画面で代用しない。
+// アプリ画面の画像（public/guide）と注釈枠の位置は e2e/guide.capture.ts で架空データから撮影・算出したもの。
 // 74式EN 5.4.3 の設定名・保存形式はソース確認済み（design/07）。Chrome/Edge の操作は公式資料に基づく構成。
 
 export type GuideEnv = 'browser' | '74en';
@@ -70,9 +71,9 @@ export const STEPS: Record<GuideEnv, GuideStep[]> = {
         src: 'guide/browser-03-preview.png',
         alt: '取り込み内容の確認画面。装備を今回のJSONで置き換え、艦娘と資材は変更しないと表示されている',
         annotations: [
-          { n: 1, x: 0.17, y: 0.36, w: 0.45, h: 0.06 },
-          { n: 2, x: 0.17, y: 0.42, w: 0.78, h: 0.25 },
-          { n: 3, x: 0.73, y: 0.87, w: 0.25, h: 0.06 },
+          { n: 1, x: 0.008, y: 0.143, w: 0.97, h: 0.103 },
+          { n: 2, x: 0.008, y: 0.258, w: 0.97, h: 0.436 },
+          { n: 3, x: 0.695, y: 0.9, w: 0.283, h: 0.063 },
         ],
         source: APP_SOURCE,
       },
@@ -89,9 +90,9 @@ export const STEPS: Record<GuideEnv, GuideStep[]> = {
         src: 'guide/browser-04-confirm.png',
         alt: '最新の所持データを反映する確認画面。反映後の個数と保持するものが表示されている',
         annotations: [
-          { n: 1, x: 0.17, y: 0.2, w: 0.8, h: 0.2 },
-          { n: 2, x: 0.17, y: 0.46, w: 0.8, h: 0.28 },
-          { n: 3, x: 0.73, y: 0.86, w: 0.25, h: 0.06 },
+          { n: 1, x: 0.008, y: 0.143, w: 0.97, h: 0.268 },
+          { n: 2, x: 0.008, y: 0.425, w: 0.97, h: 0.347 },
+          { n: 3, x: 0.679, y: 0.883, w: 0.3, h: 0.063 },
         ],
         source: APP_SOURCE,
       },
@@ -130,9 +131,9 @@ export const STEPS: Record<GuideEnv, GuideStep[]> = {
         src: 'guide/74en-03-preview.png',
         alt: '74式ENのファイルを読み込んだ後の更新内容のプレビュー',
         annotations: [
-          { n: 1, x: 0.17, y: 0.25, w: 0.8, h: 0.33 },
-          { n: 2, x: 0.17, y: 0.66, w: 0.8, h: 0.17 },
-          { n: 3, x: 0.79, y: 0.87, w: 0.17, h: 0.06 },
+          { n: 1, x: 0.028, y: 0.693, w: 0.93, h: 0.043 },
+          { n: 2, x: 0.028, y: 0.752, w: 0.93, h: 0.043 },
+          { n: 3, x: 0.755, y: 0.894, w: 0.204, h: 0.063 },
         ],
         source: APP_SOURCE,
       },
@@ -149,9 +150,9 @@ export const STEPS: Record<GuideEnv, GuideStep[]> = {
         src: 'guide/browser-04-confirm.png',
         alt: '最新の所持データを反映する確認画面',
         annotations: [
-          { n: 1, x: 0.17, y: 0.2, w: 0.8, h: 0.2 },
-          { n: 2, x: 0.17, y: 0.46, w: 0.8, h: 0.28 },
-          { n: 3, x: 0.73, y: 0.86, w: 0.25, h: 0.06 },
+          { n: 1, x: 0.008, y: 0.143, w: 0.97, h: 0.268 },
+          { n: 2, x: 0.008, y: 0.425, w: 0.97, h: 0.347 },
+          { n: 3, x: 0.679, y: 0.883, w: 0.3, h: 0.063 },
         ],
         source: APP_SOURCE,
       },

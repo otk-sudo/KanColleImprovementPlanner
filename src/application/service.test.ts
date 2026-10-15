@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildMasterIndex } from '../domain/master';
 import { parseImportText } from '../domain/import/parse';
+import { projectInventory } from '../domain/inventory/projection';
 import { buildDeltas } from '../domain/results/results';
 import type { Goal } from '../domain/model';
 import { KaishuDb } from '../infrastructure/db';
@@ -10,9 +11,11 @@ import { FX, fixtureMaster } from '../test-support/fixtureMaster';
 import { AppService, type Clock } from './service';
 import {
   handleCancelDraft,
+  handleCorrectResult,
   handleImport,
   handleRecordResult,
   handleRestore,
+  handleSameDayRetry,
   handleSaveDraft,
   handleSaveGoal,
   handleSaveSettings,
@@ -338,6 +341,39 @@ describe('実績・下書き・翌日処理', () => {
     if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('NEGATIVE_INVENTORY');
   });
 
+  it('P47：資材だけ再取り込みした後に成功を失敗へ訂正すると、資材は最新値のまま装備だけ戻る', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const rec = await recordPayload(s, a.attemptId, 'success');
+    expect((await s.run('RecordResult', handleRecordResult, rec, await base(s))).status).toBe('APPLIED');
+    await importText(s, port([FX.shipAKai2], 20)); // 資材・艦娘だけ新しい基準（装備の基準は記録より前のまま）
+    const failure = buildDeltas({ transition: a.transition, outcome: 'failure', consumption: { resources: { 8: 3, 7: 4 }, equipment: [{ equipmentId: FX.materialA, star: 0, count: 2 }], useItems: {} } });
+    const r = await s.run('CorrectResult', handleCorrectResult, { eventId: rec.eventId, newOutcome: 'failure', newDeltas: failure, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: s.nowIso() }, await base(s));
+    expect(r.status).toBe('APPLIED');
+    const d = await s.load();
+    const e = d.resultEvents.find((x) => x.eventId === rec.eventId)!;
+    expect([...e.historyOnlyScopes].sort()).toEqual(['resource:7', 'resource:8']);
+    const p = projectInventory(d.baselines, d.resultEvents, d.drafts);
+    expect(p.equipment.counts.get(`${FX.mainGunA}:5`) ?? 0).toBe(1);
+    expect(p.equipment.counts.get(`${FX.mainGunA}:6`) ?? 0).toBe(0);
+    expect(p.equipment.counts.get(`${FX.materialA}:0`) ?? 0).toBe(1);
+    expect(p.resources.get(8)?.value).toBe(20);
+  });
+
+  it('P51：同じ工程の再挑戦を2つの画面から同時に作っても、有効な次回試行は1つ', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [3, 3, 3, 3, 3, 3, 3] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'failure'), await base(s));
+    const env = await base(s);
+    const payload = { stepKey: a.stepKey, attemptId: a.attemptId, today: s.today(), limit: 3, now: s.nowIso() };
+    const [r1, r2] = await Promise.all([s.run('SameDayRetry', handleSameDayRetry, payload, env), s.run('SameDayRetry', handleSameDayRetry, payload, env)]);
+    expect([r1.status, r2.status].sort()).toEqual(['APPLIED', 'CONFLICT']);
+    await s.recalculate();
+    const d = await s.load();
+    expect(d.attempts.filter((x) => x.stepKey === a.stepKey && x.lifecycle === 'active' && x.outcome === 'none')).toHaveLength(1);
+  });
   it('P27：上限2で成功1と下書き1なら当日の追加枠は0。下書き確定後も2回', async () => {
     const s = await service();
     await importText(s, `[{"id":${FX.mainGunA},"lv":3},{"id":${FX.materialA},"lv":0},{"id":${FX.materialA},"lv":0},{"id":${FX.materialA},"lv":0},{"id":${FX.materialA},"lv":0},{"id":${FX.materialA},"lv":0},{"id":${FX.materialA},"lv":0}]`);
@@ -390,6 +426,42 @@ describe('保護・復元', () => {
     expect(fromOldTab.status).toBe('EPOCH_MISMATCH');
   });
 
+  it('P30：新しいマスターで過去実績のレシピが消えても実績は残り、将来の予定は確認待ちにする', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const rec = await recordPayload(s, a.attemptId, 'success', { recipeSnapshot: { masterVersion: m.version, transition: a.transition, fromName: '主砲A', toName: '主砲A', mode: 'normal', entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null } });
+    expect((await s.run('RecordResult', handleRecordResult, rec, await base(s))).status).toBe('APPLIED');
+    const next = fixtureMaster({ masterVersion: 'next' });
+    next.recipes = next.recipes.filter((r) => r.equipmentId !== FX.mainGunA);
+    const s2 = new AppService(db, buildMasterIndex(next), clock);
+    await s2.init();
+    const d = await s2.load();
+    expect(d.meta.masterReviewRequired).toBe(true);
+    expect(await s2.recalculate()).toBe('MASTER_REVIEW');
+    // 当時の消費と工程は記録に残っている
+    const e = d.resultEvents.find((x) => x.eventId === rec.eventId)!;
+    expect(e.recipeSnapshot?.fromName).toBe('主砲A');
+    expect(e.deltas.some((x) => x.scope === 'resource:8' && x.amount === -3)).toBe(true);
+  });
+
+  it('P67：復元の応答が失われ旧 epoch で再送されても二重に復元しない', async () => {
+    const s = await service();
+    await importText(s, '[{"api_id":8,"api_value":10}]');
+    const parsed = parseBackup(exportBackup(await s.load(), m.version, '0.1.0', s.nowIso()), m.version);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const env = { ...(await base(s)), commandId: 'restore-1' };
+    const payload = { backup: parsed.backup, newEpoch: 'epoch-r1', masterMissing: false, confirmedPlanHold: false, nowMs: clockMs, now: s.nowIso() };
+    expect((await s.run('RestoreBackup', handleRestore, payload, env)).status).toBe('APPLIED');
+    await importText(s, '[{"api_id":8,"api_value":15}]'); // 復元後の新しい操作
+    const before = await s.load();
+    const resend = await s.run('RestoreBackup', handleRestore, { ...payload, newEpoch: 'epoch-r2' }, env);
+    expect(resend.status).toBe('EPOCH_MISMATCH');
+    const after = await s.load();
+    expect(after.meta.datasetEpoch).toBe('epoch-r1');
+    expect(after.meta.revision).toBe(before.meta.revision);
+    expect(after.baselines.find((b) => b.scope === 'resource:8')?.value).toBe(15);
+  });
   it('P43：必要マスターがないバックアップは確認後に在庫・履歴を復元し、計画は保留する', async () => {
     const s = await service();
     await importText(s, '[{"api_id":8,"api_value":10}]');

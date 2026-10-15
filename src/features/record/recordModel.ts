@@ -118,3 +118,17 @@ export function deltasFromForm(form: RecordForm, rows: ConsumptionRow[], transit
   const known = buildDeltas({ transition, outcome: 'failure', consumption });
   return { deltas, known, unknownScopes: [...unknown], invalid };
 }
+
+/**
+ * 記録・訂正で表示する★の所持数の変化（更新元・更新先）。訂正は旧増減を戻した正味の変化を示す。
+ * 取り込み済みの基準に含まれる記録（P50）は現在数を変えず、当時の数量は記録がないため示さない。
+ */
+export type CorrectionEffect = { kind: 'change'; from: number; to: number } | { kind: 'none' } | { kind: 'historyOnly' };
+
+export function correctionEffect(input: { newDeltas: Delta[]; oldDeltas: Delta[]; fixedScopes: ScopeKey[] }, fromId: number, fromStar: number, toId: number, toStar: number): CorrectionEffect {
+  if (input.fixedScopes.includes('equipment')) return { kind: 'historyOnly' };
+  const sum = (deltas: Delta[], id: number, star: number) => deltas.reduce((n, d) => (d.scope === 'equipment' && d.equipmentId === id && d.star === star ? n + d.amount : n), 0);
+  const from = sum(input.newDeltas, fromId, fromStar) - sum(input.oldDeltas, fromId, fromStar);
+  const to = sum(input.newDeltas, toId, toStar) - sum(input.oldDeltas, toId, toStar);
+  return from === 0 && to === 0 ? { kind: 'none' } : { kind: 'change', from, to };
+}

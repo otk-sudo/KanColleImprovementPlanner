@@ -64,6 +64,39 @@ describe('在庫投影：最新JSONを基準にし、基準以後の実績だけ
     expect(projectInventory([b2], [corrected, e2], []).resources.get(8)?.value).toBe(7);
   });
 
+  it('P45：基準10、seq1消費4・seq2消費3。seq1を消費2へ訂正すると 10−2−3=5（旧消費4を重ねない）', () => {
+    const res = baseline('resource:8', { value: 10 });
+    const corrected = event(1, [screw(-2)], { revision: 2 });
+    const e2 = event(2, [screw(-3)]);
+    expect(projectInventory([res], [corrected, e2], []).resources.get(8)?.value).toBe(5);
+  });
+
+  it('P46：資材8を再取り込み（境界seq2）後に seq1 を消費2へ訂正しても最新8を維持する', () => {
+    const res = baseline('resource:8', { value: 8, includedThroughSequence: 2 });
+    const corrected = event(1, [screw(-2)], { revision: 2 });
+    const e2 = event(2, [screw(-3)]);
+    expect(projectInventory([res], [corrected, e2], []).resources.get(8)?.value).toBe(8);
+  });
+
+  it('P47：資材だけ境界seq2・装備は境界seq0。seq1 の成功を失敗へ訂正すると資材は最新値、装備は B−1/A＋1', () => {
+    const eq = baseline('equipment', { includedThroughSequence: 0, equipment: { granularity: 'aggregate', buckets: [{ equipmentId: 1, star: 5, count: 1 }], instances: null } });
+    const res = baseline('resource:8', { value: 6, includedThroughSequence: 2 });
+    const success = event(1, [{ scope: 'equipment', equipmentId: 1, star: 5, amount: -1 }, { scope: 'equipment', equipmentId: 1, star: 6, amount: 1 }, screw(-4)]);
+    const before = projectInventory([eq, res], [success], []);
+    expect([before.equipment.counts.get('1:5') ?? 0, before.equipment.counts.get('1:6') ?? 0, before.resources.get(8)?.value]).toEqual([0, 1, 6]);
+    // 失敗へ訂正：★は変わらず、資材の実消費だけ（資材は基準に含まれるので履歴のみ）
+    const failed = event(1, [screw(-4)], { revision: 2, outcome: 'failure', historyOnlyScopes: ['resource:8'] });
+    const after = projectInventory([eq, res], [failed], []);
+    expect([after.equipment.counts.get('1:5') ?? 0, after.equipment.counts.get('1:6') ?? 0, after.resources.get(8)?.value]).toEqual([1, 0, 6]);
+  });
+
+  it('P50：装備の基準以前の成功を訂正しても現在数は変えない（過去の数量を逆算しない）', () => {
+    const eq = baseline('equipment', { includedThroughSequence: 1, equipment: { granularity: 'aggregate', buckets: [{ equipmentId: 1, star: 6, count: 1 }], instances: null } });
+    const failed = event(1, [], { revision: 2, outcome: 'failure', historyOnlyScopes: ['equipment'] });
+    const p = projectInventory([eq], [failed], []);
+    expect([p.equipment.counts.get('1:5') ?? 0, p.equipment.counts.get('1:6') ?? 0]).toEqual([0, 1]);
+  });
+
   it('P15：資材だけ新基準でも装備の基準境界は別に判定する', () => {
     const eq = baseline('equipment', {
       includedThroughSequence: 0,
