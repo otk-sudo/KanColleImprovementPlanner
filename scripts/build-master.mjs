@@ -246,7 +246,10 @@ async function main() {
   console.log(JSON.stringify(manifest.counts));
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exitCode = 1;
-});
+// 他のスクリプト（crosscheck-master.mjs）から出典定義だけを読み込むときは生成しない
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))) {
+  main().catch((err) => {
+    console.error(err.message);
+    process.exitCode = 1;
+  });
+}

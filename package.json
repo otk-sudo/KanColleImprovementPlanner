@@ -15,11 +15,12 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium",
     "master:build": "node scripts/build-master.mjs",
     "master:crosscheck": "node scripts/crosscheck-master.mjs",
     "screens:capture": "playwright test --project=screens",
-    "screens:compare": "node scripts/compare-screens.mjs"
+    "screens:compare": "node scripts/compare-screens.mjs",
+    "guide:capture": "playwright test --project=guide"
   },
   "dependencies": {
     "@fontsource/noto-sans-jp": "5.3.1",
