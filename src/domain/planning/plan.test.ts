@@ -324,6 +324,17 @@ describe('確実化と完了予定（design/17）', () => {
 describe('レビュー指摘（PR #1）', () => {
   const draftOf = (attemptId: string, stepKey: string, reportedOutcome: 'success' | 'failure', knownConsumptions: DraftResult['knownConsumptions']): DraftResult => ({ draftId: `d-${attemptId}`, attemptId, stepKey, occurredDateJst: '2026-10-13', occurredOrder: 1, reportedOutcome, knownConsumptions, unknownScopes: [], scopeAnswers: {}, createdRevision: 1, updatedRevision: 1, createdAt: '', status: 'open', cancelReason: null, recipeSnapshot: null });
 
+  it('装備の消費が不明な確認待ちの下書きがある間は、目標の達成や完了予定を断定しない', () => {
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    const other = attempt({ attemptId: 'o|9:0>1|0@1', stepKey: 'o|9:0>1|0', goalId: 'o', transition: { kind: 'improve', equipmentId: 9, fromStar: 0, toStar: 1 }, scheduledDate: '2026-10-13', outcome: 'draft' });
+    const draft = { ...draftOf(other.attemptId, other.stepKey, 'failure', []), unknownScopes: ['equipment' as const] };
+    const spec = { master: simpleMaster(), inventory: { equipment: [[1, 1, 1]] as [number, number, number][], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [other] };
+    expect(buildPlan(planInput(spec)).goals[0]?.status).toBe('achieved');
+    const pending = buildPlan(planInput({ ...spec, drafts: [draft] })).goals[0]!;
+    expect(pending.status).toBe('undetermined');
+    expect(pending.reasons).toContain('RESULT_PENDING');
+  });
+
   it('確認待ちの下書きが確保した素材装備は、計画で別の工程に割り当てない', () => {
     // Y★0 を2個所持。別の改修の下書きが Y★0 を2個確保済み。X★0→★1 は Y を2個使う
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });

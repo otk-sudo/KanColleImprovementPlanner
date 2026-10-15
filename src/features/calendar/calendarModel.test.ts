@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '../../domain/model';
 import type { Placement, PlanResult } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { attempt } from '../../test-support/planFixtures';
-import { buildDays, dayRequirements, entryCost, latestAttemptOf, monthCellSummary, type DayEntry } from './calendarModel';
+import { buildDays, dayRequirements, entryCost, entryEquipmentName, entryHelperName, entryLabel, latestAttemptOf, monthCellSummary, type DayEntry } from './calendarModel';
 import { buildMasterIndex } from '../../domain/master';
 import { fixtureMaster } from '../../test-support/fixtureMaster';
 
@@ -44,6 +44,29 @@ describe('カレンダーの件数（design/17）', () => {
     const yesterday = days.get('2026-10-13')!;
     expect(yesterday.entries.map((e) => e.kind)).toEqual(['superseded']);
     expect(yesterday.plannedCount + yesterday.doneCount).toBe(0);
+  });
+
+  it('繰り越した試行でも、記録した結果（スキップ・後から記録した成功）は結果として表示する', () => {
+    const skipped = attempt({ attemptId: 'a@1', stepKey: 'a', goalId: 'g', transition: t(0), scheduledDate: '2026-10-13', outcome: 'skip', lifecycle: 'superseded' });
+    const late = attempt({ attemptId: 'b@1', stepKey: 'b', goalId: 'g', transition: t(1), scheduledDate: '2026-10-13', outcome: 'success', lifecycle: 'superseded' });
+    const moved = attempt({ attemptId: 'c@1', stepKey: 'c', goalId: 'g', transition: t(2), scheduledDate: '2026-10-13', outcome: 'none', lifecycle: 'superseded' });
+    const day = buildDays(data([skipped, late, moved]), null, '2026-10-13', '2026-10-13', '2026-10-14').get('2026-10-13')!;
+    expect(day.entries.map((e) => [e.attemptId, e.kind])).toEqual([
+      ['a@1', 'skip'],
+      ['b@1', 'success'],
+      ['c@1', 'superseded'],
+    ]);
+  });
+
+  it('予定と別の日に記録した結果は、実施日（と実施順）に表示する', () => {
+    const a = attempt({ attemptId: 'a@1', stepKey: 'a', goalId: 'g', transition: t(0), scheduledDate: '2026-10-14', outcome: 'success', resultEventId: 'e1' });
+    const ev = { eventId: 'e1', attemptId: 'a@1', stepKey: 'a', goalId: 'g', originalSequence: 1, revision: 1, status: 'active' as const, outcome: 'success' as const, occurredDateJst: '2026-10-12', occurredOrder: 4, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const d = { ...data([a]), resultEvents: [ev] };
+    const days = buildDays(d, null, '2026-10-12', '2026-10-14', '2026-10-14');
+    expect(days.get('2026-10-12')?.entries.map((e) => [e.attemptId, e.order])).toEqual([['a@1', 4]]);
+    expect(days.get('2026-10-14')?.entries ?? []).toEqual([]);
+    // 実施日だけを表示する範囲でも出る
+    expect(buildDays(d, null, '2026-10-12', '2026-10-12', '2026-10-14').get('2026-10-12')?.doneCount).toBe(1);
   });
 
   it('スキップは実施にも予定にも数えず、スキップ件数として分ける', () => {
@@ -108,5 +131,23 @@ describe('記録済みの結果の費用（S02・S18）', () => {
     const e: DayEntry = { kind: 'success', attemptId: 'a', stepKey: 's', goalId: 'g', transition: { kind: 'improve', equipmentId: 999, fromStar: 0, toStar: 1 }, placement: null, attempt: null, event, order: 1 };
     const cost = entryCost(m, e)!;
     expect([cost.fuel, cost.devmats.normal, cost.devmats.guaranteed, cost.screws.guaranteed, cost.equipment]).toEqual([1, 5, 5, 6, [{ equipmentId: 2, count: 1 }]]);
+  });
+});
+
+describe('記録済みの結果の名称（S01・S02・S18）', () => {
+  const m = buildMasterIndex(fixtureMaster());
+  const base: DayEntry = { kind: 'success', attemptId: 'a', stepKey: 's', goalId: 'g', transition: { kind: 'improve', equipmentId: 999, fromStar: 0, toStar: 1 }, placement: null, attempt: null, event: null, order: 1 };
+  const snapshot = { masterVersion: 'old', transition: base.transition, fromName: '旧名の主砲', toName: '旧名の主砲', mode: 'normal', entryIndex: 0, plannedCost: null, helperShipId: 101, helperShipName: '旧名の艦' };
+
+  it('結果がある項目は記録時に保存した装備名・担当艦名で表示し、現在のマスターの変更に左右されない', () => {
+    const e = { ...base, event: { recipeSnapshot: snapshot } as unknown as DayEntry['event'] };
+    expect(entryEquipmentName(m, e)).toBe('旧名の主砲');
+    expect(entryLabel(m, e)).toBe('旧名の主砲 ★0 → ★1');
+    expect(entryHelperName(m, e, 101)).toBe('旧名の艦');
+  });
+
+  it('結果のない予定は現在のマスターの名称で表示する', () => {
+    expect(entryEquipmentName(m, base)).toBe(m.equipmentName(999));
+    expect(entryHelperName(m, base, 101)).toBe(m.shipName(101));
   });
 });

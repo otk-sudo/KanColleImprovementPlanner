@@ -10,7 +10,7 @@ import type { AppData } from '../../infrastructure/repository';
 import { newId } from '../../infrastructure/repository';
 import { costKeyLabel, costKeyPlain, costSummary, costSummaryTight, transitionLabel, transitionShort } from '../../ui/format';
 import { WelcomeContent } from '../onboarding/WelcomePage';
-import { buildDays, dayRequirements, emptyDay, entryCost, KIND_LABEL, latestAttemptOf, monthCellSummary, type DayEntry, type DayInfo } from './calendarModel';
+import { buildDays, dayRequirements, emptyDay, entryCost, entryEquipmentName, entryHelperName, entryLabel, KIND_LABEL, latestAttemptOf, monthCellSummary, type DayEntry, type DayInfo } from './calendarModel';
 import './calendar.css';
 
 // カレンダー（S01 月・S02 週・S18 日付指定・S24 個別スキップ・S25 日全体スキップ・S30 前提待ち）。
@@ -148,7 +148,7 @@ function MonthCell({ info, selected, today, onSelect }: { info: DayInfo; selecte
         <>
           <span className={`cal-entry ${tentative ? 'text-warn' : main.kind === 'failure' ? 'text-fail' : main.kind === 'skip' ? 'text-sub' : 'text-ok'}`}>
             {tentative ? '仮  ' : ''}
-            {master.equipmentName(main.transition.equipmentId)}
+            {entryEquipmentName(master, main)}
           </span>
           <span className="cal-entry-sub">{monthCellSummary(info.entries)}</span>
           {info.goalsCompleting.length > 0 ? <span className="cal-entry-goal">完了見込み</span> : visible.length > 1 && new Set(visible.map((v) => v.transition.equipmentId)).size > 1 ? <span className="cal-entry-goal text-sub">ほか{new Set(visible.map((v) => v.transition.equipmentId)).size - 1}件</span> : null}
@@ -165,7 +165,7 @@ function helperLine(master: ReturnType<typeof useStore>['master'], e: DayEntry, 
   const id = e.placement?.helperShipId ?? e.attempt?.helperShipId ?? null;
   if (id === null) return { text: '担当艦：未定', ok: false };
   const owned = (projection.ships.owned.get(id) ?? 0) > 0;
-  return { text: `担当艦：${master.shipName(id)} ${owned ? '✓ 所持' : '! 未所持'}`, ok: owned };
+  return { text: `担当艦：${entryHelperName(master, e, id)} ${owned ? '✓ 所持' : '! 未所持'}`, ok: owned };
 }
 
 function DaySidePanel({ info }: { info: DayInfo }) {
@@ -253,7 +253,7 @@ function SideEntry({ entry, index, full }: { entry: DayEntry; index: number; ful
       <p className="cal-side-title">
         {String(index + 1).padStart(2, '0')}
         {'   '}
-        {master.equipmentName(entry.transition.equipmentId)}
+        {entryEquipmentName(master, entry)}
         {'  '}
         {transitionShort(entry.transition)}
         {entry.kind !== 'planned' && !(full && entry.kind === 'tentative') ? <span className={`cal-side-kind kind-${entry.kind}`}>{KIND_LABEL[entry.kind]}</span> : null}
@@ -332,12 +332,12 @@ export function WeekPage() {
                       <Link to={`/calendar/day/${d}`}>
                         <span className={`week-card-kind tone-text-${tone}`}>{KIND_LABEL[x.kind]}</span>
                         <span className="week-card-title">
-                          {master.equipmentName(x.transition.equipmentId)}
+                          {entryEquipmentName(master, x)}
                           <br />
                           {transitionShort(x.transition)}
                         </span>
                         <span className="week-card-sub">
-                          {helperId !== null ? master.shipName(helperId) : '担当艦未定'}
+                          {helperId !== null ? entryHelperName(master, x, helperId) : '担当艦未定'}
                           <br />
                           {costSummaryTight(master, entryCost(master, x), x.placement?.mode ?? x.attempt?.mode ?? 'normal', ' / ')}
                         </span>
@@ -427,7 +427,7 @@ export function DayPage() {
             <article key={e.stepKey + (e.attemptId ?? '')} className="day-entry">
               <div className="day-entry-body">
                 <p className="day-entry-title">
-                  {String(i + 1).padStart(2, '0')}  {transitionLabel(master, e.transition)}
+                  {String(i + 1).padStart(2, '0')}  {entryLabel(master, e)}
                   {e.kind !== 'planned' && e.kind !== 'tentative' ? <span className={`cal-side-kind kind-${e.kind}`}>{KIND_LABEL[e.kind]}</span> : null}
                 </p>
                 <p className="day-entry-helper">

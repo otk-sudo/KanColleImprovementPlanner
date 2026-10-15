@@ -799,6 +799,9 @@ export function buildPlan(input: PlanInput): PlanResult {
     const gPlacements = placements.filter((p) => p.goalId === g.goalId && stepByKey.has(p.stepKey));
     const gUnplaced = unplaced.filter((p) => p.goalId === g.goalId);
     const reasons = [...new Set(gUnplaced.flatMap((p) => p.reasons))];
+    // 装備の消費が不明な確認待ちの実施がある間は、所持の完成品・改修対象が残っているか断定できない
+    const equipmentPending = unknownScope('equipment');
+    if (equipmentPending && !reasons.includes('RESULT_PENDING')) reasons.unshift('RESULT_PENDING');
     const need = [...(needByGoal.get(g.goalId) ?? new Map<CostKey, number>()).entries()].sort((a, b) => keyRank(a[0]) - keyRank(b[0]));
     const shortages = need.map(([key, amount]) => {
       const avail = remainingAvail.get(key);
@@ -809,7 +812,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     });
     let status: GoalPlan['status'];
     let completionDate: DateJst | null = null;
-    if (completed >= g.count) status = 'achieved';
+    if (equipmentPending) status = 'undetermined';
+    else if (completed >= g.count) status = 'achieved';
     else if (gUnplaced.length > 0 || gPlacements.some((p) => p.date === null)) status = 'undetermined';
     else {
       completionDate = gPlacements.reduce<DateJst | null>((max, p) => (p.date && (!max || compareDate(p.date, max) > 0) ? p.date : max), null);

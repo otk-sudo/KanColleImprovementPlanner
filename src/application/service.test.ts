@@ -260,6 +260,24 @@ describe('実績・下書き・翌日処理', () => {
     expect(r.status).toBe('VALIDATION_ERROR');
   });
 
+  it('翌日処理を保存できなかったら、保存できなかったことを返す（未実施の予定を移したことにしない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    clockMs += 24 * 3600 * 1000; // 翌日
+    const spy = vi.spyOn(db.meta, 'put').mockImplementationOnce(() => {
+      const e = new Error('quota');
+      e.name = 'QuotaExceededError';
+      throw e;
+    });
+    const failed = await s.rollover();
+    spy.mockRestore();
+    expect(failed.saved).toBe(false);
+    expect(failed.moved).toBe(0);
+    const ok = await s.rollover();
+    expect(ok.saved).toBe(true);
+    expect(ok.moved).toBe(1);
+  });
+
   it('P42/P29：下書きを未実施へ訂正すると保留を解放し、過去日なら翌日処理で後継を1つだけ作る', async () => {
     const s = await service();
     await seedPlan(s);
@@ -538,6 +556,17 @@ describe('レビュー指摘（PR #1）', () => {
     expect(moved.ok).toBe(false);
     // 日付を変えない訂正（理由だけ）は保存できる
     expect(handleCorrectResult(data, { eventId: 'A', newOutcome: 'success', newDeltas: [star(5, -1), star(6, 1)], occurredDateJst: '2026-10-12', historyOnlyScopes: [], reason: 'メモ', today: '2026-10-14', now: '' }).ok).toBe(true);
+  });
+
+  it('削除した目標の工程には、同日の再挑戦を追加しない', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'failure'), await base(s));
+    const d = await s.load();
+    const retry = { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' };
+    expect(handleSameDayRetry({ ...d, goals: [] }, retry).ok).toBe(false);
+    expect(handleSameDayRetry(d, retry).ok).toBe(true);
   });
 
   it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {

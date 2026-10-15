@@ -107,17 +107,24 @@ export class AppService {
     return 'CONFLICT';
   }
 
-  /** 日本時間の翌日処理。起動・フォーカス復帰・日付変更で呼ぶ。複数タブでも後継は1つだけ */
-  async rollover(): Promise<{ moved: number; recalc: RecalcStatus | null }> {
+  /**
+   * 日本時間の翌日処理。起動・フォーカス復帰・日付変更で呼ぶ。複数タブでも後継は1つだけ。
+   * saved=false は処理が必要だったのに保存できなかったこと（呼び出し側で利用者に知らせる）
+   */
+  async rollover(): Promise<{ moved: number; recalc: RecalcStatus | null; saved: boolean }> {
     const nowMs = this.clock.nowMs();
     const today = todayJst(nowMs);
     const now = this.nowIso();
     let moved = 0;
+    let saved = false;
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
       const preview = computeRollover(data.attempts, today, now, new Set(data.goals.map((g) => g.goalId)));
       const clockBack = nowMs < data.meta.lastClockMs - 5 * 60 * 1000;
-      if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && !clockBack) break;
+      if (preview.successors.length === 0 && data.meta.lastProcessedDateJst === today && !clockBack) {
+        saved = true;
+        break;
+      }
       const r = await executeInternal(
         this.db,
         data.meta.revision,
@@ -137,12 +144,17 @@ export class AppService {
         },
         now,
       );
-      if (r === 'APPLIED' || r === 'NO_CHANGE') break;
-      if (r === 'STORAGE_ERROR') return { moved: 0, recalc: 'FAILED' };
+      if (r === 'APPLIED' || r === 'NO_CHANGE') {
+        saved = true;
+        break;
+      }
+      if (r === 'STORAGE_ERROR') return { moved: 0, recalc: 'FAILED', saved: false };
     }
+    // 競合が続いて保存できなかった場合も、移したことにしない
+    if (!saved) return { moved: 0, recalc: null, saved: false };
     const after = await loadData(this.db);
     const recalc = after.meta.planDirty || moved > 0 ? await this.recalculate() : null;
-    return { moved, recalc };
+    return { moved, recalc, saved: true };
   }
 }
 

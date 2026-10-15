@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { BACKUP_FORMAT } from '../src/domain/backup';
-import { screenMaster } from './support/masters';
+import { ID, screenMaster } from './support/masters';
 import { pasteAndApply, start, state } from './support/app';
-import { backup, fixClock, goal, serveFixtureMaster, valueBaseline, type BackupSpec } from './support/scenario';
+import { backup, eqBaseline, fixClock, goal, serveFixtureMaster, shipBaseline, valueBaseline, type BackupSpec } from './support/scenario';
 
 // 複数タブ・保存失敗・バックアップと復元（R02/R05、A07・A10）。
 
@@ -93,6 +93,33 @@ test('A10：別のタブで削除した目標を、先に開いていた編集�
   await expect(b.getByText('この目標は見つかりません。')).toBeVisible();
   await expect(b.getByRole('button', { name: '目標を保存', exact: true })).toHaveCount(0);
   expect((await state(b)).goals.some((g) => g.goalId === 'g1')).toBe(false);
+});
+
+test('A07/A10：日付変更の処理を保存できなければ警告を残し、開き直すと再試行する', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __failWrites: boolean };
+    w.__failWrites = false;
+    for (const name of ['put', 'add'] as const) {
+      const original = IDBObjectStore.prototype[name];
+      IDBObjectStore.prototype[name] = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+        if (w.__failWrites) throw new DOMException('テスト用の容量不足', 'QuotaExceededError');
+        return original.apply(this, args);
+      };
+    }
+  });
+  const withPlan: BackupSpec = { ...seed, baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 5, 1], [ID.materialA, 0, 3]]), shipBaseline([ID.shipAKai2])], goals: [goal({ goalId: 'g1', equipmentId: ID.mainGunA, targetStar: 6, count: 1 })] };
+  await start(page, { data: withPlan, route: '/calendar' });
+  await expect.poll(async () => (await state(page)).attempts.filter((a) => a.scheduledDate === '2026-10-14').length).toBe(1);
+  await page.evaluate(() => ((window as unknown as { __failWrites: boolean }).__failWrites = true));
+  await page.clock.setFixedTime(new Date('2026-10-15T00:00:00.000Z')); // 10/15 09:00 JST
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText('日付変更の処理（未完了の予定の繰越）を保存できませんでした。').first()).toBeVisible();
+  expect((await state(page)).attempts.some((a) => a.lifecycle === 'superseded')).toBe(false);
+  // 保存できる状態で開き直すと再試行し、警告を消す
+  await page.evaluate(() => ((window as unknown as { __failWrites: boolean }).__failWrites = false));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText('日付変更の処理（未完了の予定の繰越）を保存できませんでした。')).toHaveCount(0);
+  expect((await state(page)).attempts.filter((a) => a.lifecycle === 'superseded')).toHaveLength(1);
 });
 
 test('A07：端末の時刻が前回より戻ったら警告を表示し、確認するまで残す', async ({ page }) => {

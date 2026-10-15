@@ -513,6 +513,8 @@ export function handleSameDayRetry(data: AppData, p: { stepKey: string; attemptI
   const list = data.attempts.filter((a) => a.stepKey === p.stepKey).sort((a, b) => seqOf(a) - seqOf(b));
   const latest = list.at(-1);
   if (!latest || latest.outcome !== 'failure' || latest.scheduledDate !== p.today) return fail('NOT_FAILED_TODAY', '同日の再挑戦は、今日失敗した工程にだけ追加できます。');
+  // 目標を削除した工程の失敗は履歴として残すだけで、再挑戦は作らない
+  if (latest.goalId !== null && !data.goals.some((g) => g.goalId === latest.goalId)) return fail('GOAL_NOT_FOUND', 'この工程の目標は削除されているため、再挑戦を追加できません。');
   const used = data.attempts.filter((a) => a.scheduledDate === p.today && a.lifecycle !== 'cancelled' && a.lifecycle !== 'superseded').length;
   if (used >= p.limit) return fail('DAY_LIMIT', '今日の改修上限に達しているため追加できません。設定で上限を変更できます。');
   const maxOrder = Math.max(0, ...data.attempts.filter((a) => a.scheduledDate === p.today).map((a) => a.dayOrder));

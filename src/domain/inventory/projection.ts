@@ -115,6 +115,8 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
     if (d.status !== 'open') continue;
     for (const c of d.knownConsumptions) {
       const scope = deltaScope(c);
+      // 「履歴だけに記録」と答えた種類は現在の所持数に反映しないので確保しない
+      if (d.scopeAnswers[scope] === 'historyOnly') continue;
       const base = byScope.get(scope);
       if (base?.includedDraftIds.includes(d.draftId)) continue;
       if (c.amount >= 0) continue;
@@ -122,6 +124,7 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
       holds.set(key, (holds.get(key) ?? 0) - c.amount);
     }
     for (const s of d.unknownScopes) {
+      if (d.scopeAnswers[s] === 'historyOnly') continue;
       const base = byScope.get(s);
       if (base?.includedDraftIds.includes(d.draftId)) continue;
       pendingUnknownScopes.add(s);

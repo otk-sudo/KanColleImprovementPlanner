@@ -5,6 +5,7 @@ import type { CostKey, Placement, PlanResult } from '../../domain/planning/types
 import { attemptSeq, costItems } from '../../domain/planning/plan';
 import { holidaySet } from '../../domain/planning/schedule';
 import type { AppData } from '../../infrastructure/repository';
+import { recordedTransitionLabel } from '../../ui/format';
 
 // 日別・週別・月別を同じ投影から集計する（design/17「カレンダーの件数」）。
 
@@ -59,21 +60,28 @@ export function buildDays(data: AppData, plan: PlanResult | null, from: DateJst,
   };
   const placementsByAttempt = new Map((plan?.placements ?? []).filter((p) => p.persisted).map((p) => [p.attemptId, p]));
   const eventsById = new Map(data.resultEvents.map((e) => [e.eventId, e]));
+  const openDrafts = new Map(data.drafts.filter((d) => d.status === 'open').map((d) => [d.attemptId, d]));
   // 保存済みの試行（過去・当日・繰越後継）
   for (const a of data.attempts) {
-    if (!inRange(a.scheduledDate) || a.lifecycle === 'cancelled') continue;
-    const info = ensure(a.scheduledDate);
+    if (a.lifecycle === 'cancelled') continue;
     const event = a.resultEventId ? (eventsById.get(a.resultEventId) ?? null) : null;
+    const draft = a.outcome === 'draft' ? (openDrafts.get(a.attemptId) ?? null) : null;
+    // 結果は実施日・実施順に表示する（予定と別の日に記録・訂正した場合を含む）。それ以外は予定日
+    const date = event && event.status === 'active' ? event.occurredDateJst : draft ? draft.occurredDateJst : a.scheduledDate;
+    const order = event && event.status === 'active' ? event.occurredOrder : draft ? draft.occurredOrder : a.dayOrder;
+    if (!inRange(date)) continue;
+    const info = ensure(date);
     let kind: EntryKind;
-    if (a.lifecycle === 'superseded') kind = 'superseded';
-    else if (a.outcome === 'success' || a.outcome === 'failure' || a.outcome === 'skip' || a.outcome === 'draft') kind = a.outcome;
+    // 記録した結果は、繰り越した試行でも結果として表示する。「繰り越し」は結果のない移動だけ
+    if (a.outcome === 'success' || a.outcome === 'failure' || a.outcome === 'skip' || a.outcome === 'draft') kind = a.outcome;
+    else if (a.lifecycle === 'superseded') kind = 'superseded';
     else {
       const p = placementsByAttempt.get(a.attemptId);
       if (!p) continue; // 将来の後継で再配置されたものは計画側で表示
       if (p.date !== a.scheduledDate) continue;
       kind = kindOfPlacement(p);
     }
-    info.entries.push({ kind, attemptId: a.attemptId, stepKey: a.stepKey, goalId: a.goalId, transition: a.transition, placement: placementsByAttempt.get(a.attemptId) ?? null, attempt: a, event, order: a.dayOrder });
+    info.entries.push({ kind, attemptId: a.attemptId, stepKey: a.stepKey, goalId: a.goalId, transition: a.transition, placement: placementsByAttempt.get(a.attemptId) ?? null, attempt: a, event, order });
   }
   // 計画上の未保存の配置（将来）
   for (const p of plan?.placements ?? []) {
@@ -182,4 +190,20 @@ export function entryCost(master: MasterIndex, e: DayEntry): AttemptCost | null 
   const opts = transitionOptions(master, e.transition);
   const idx = e.event?.recipeSnapshot?.entryIndex ?? null;
   return (opts.find((o) => o.entryIndex === idx) ?? opts[0])?.cost ?? null;
+}
+
+/** 装備名。記録済みの結果は記録時に保存した名称（マスター更新で名称が変わっても当時の名称を表示する） */
+export function entryEquipmentName(m: MasterIndex, e: DayEntry): string {
+  return e.event?.recipeSnapshot?.fromName || m.equipmentName(e.transition.equipmentId);
+}
+
+/** 「装備名 ★n → ★n+1」。記録済みの結果は記録時の名称 */
+export function entryLabel(m: MasterIndex, e: DayEntry): string {
+  return recordedTransitionLabel(m, e.transition, e.event?.recipeSnapshot ?? null);
+}
+
+/** 担当艦名。記録済みの結果で記録時の担当艦と同じなら、記録時に保存した名称 */
+export function entryHelperName(m: MasterIndex, e: DayEntry, shipId: number): string {
+  const snap = e.event?.recipeSnapshot;
+  return snap?.helperShipId === shipId && snap.helperShipName ? snap.helperShipName : m.shipName(shipId);
 }

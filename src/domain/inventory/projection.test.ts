@@ -185,6 +185,10 @@ describe('在庫投影：最新JSONを基準にし、基準以後の実績だけ
     expect(p.resources.get(8)?.value).toBe(10);
     expect(p.holds.get('resource:8')).toBe(4);
     expect(p.pendingUnknownScopes.has('resource:7')).toBe(true);
+    // 「履歴だけに記録」と答えた種類は、確保も不明扱いもしない（現在の所持数に反映しないため）
+    const historyOnly = projectInventory([baseline('resource:8', { value: 10 }), baseline('resource:7', { value: 40 })], [], [{ ...draft, scopeAnswers: { 'resource:8': 'historyOnly', 'resource:7': 'historyOnly' } }]);
+    expect(historyOnly.holds.get('resource:8') ?? 0).toBe(0);
+    expect(historyOnly.pendingUnknownScopes.has('resource:7')).toBe(false);
   });
 
   it('既知在庫が負になる場合は不整合として報告する', () => {

@@ -35,7 +35,9 @@ export function App() {
         const service = new AppService(db, master, systemClock);
         await service.init();
         if (import.meta.env.VITE_TEST_HOOKS === '1') installTestHooks(service);
-        await service.rollover();
+        // 日付変更の処理（未完了の予定の繰越）を保存できなければ、前日の予定のまま起動しない
+        const rolled = await service.rollover();
+        if (!rolled.saved) throw new Error('日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量やブラウザの設定を確認してから再読み込みしてください。保存済みのデータは変更していません。');
         const data = await service.load();
         if (!cancelled) setBoot({ state: 'ready', service, master, manifest, data });
       } catch (e) {

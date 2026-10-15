@@ -108,6 +108,7 @@ function messageFor(outcome: CommandOutcome<unknown>): string | null {
 }
 
 const CHANNEL = 'kancolle-improvement-planner';
+const ROLLOVER_FAILED = '日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してください。画面を開き直すと再試行します。';
 
 export function StoreProvider({ service, master, manifest, initialData, children }: { service: AppService; master: MasterIndex; manifest: MasterManifest; initialData: AppData; children: ReactNode }) {
   const [data, setData] = useState<AppData>(initialData);
@@ -121,6 +122,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const channel = useRef<BroadcastChannel | null>(null);
   const busyRef = useRef(false);
   const dataRef = useRef<AppData>(initialData);
+  const rolloverFailed = useRef(false);
   // 他タブの通知で表示用のデータを読み直しても、この版は更新しない（開いていた画面の確定を競合として扱う）
   const pageBase = useRef<CommandBase>(baseOf(initialData));
 
@@ -210,6 +212,15 @@ export function StoreProvider({ service, master, manifest, initialData, children
       const r = await service.rollover();
       if (r.moved > 0) broadcast();
       await refresh();
+      // 保存できなかった場合は、次に画面を開き直す（フォーカス復帰）まで消えない警告にする
+      if (!r.saved) {
+        rolloverFailed.current = true;
+        setSaveState('error');
+        setSaveMessage(ROLLOVER_FAILED);
+      } else if (rolloverFailed.current) {
+        rolloverFailed.current = false;
+        setSaveMessage((m) => (m === ROLLOVER_FAILED ? null : m));
+      }
     };
     try {
       channel.current = new BroadcastChannel(CHANNEL);
