@@ -211,6 +211,28 @@ test('A07：訂正後の日付変更の処理を保存できなければ、警�
   expect((await state(page)).attempts.find((a) => a.attemptId === original.attemptId)?.lifecycle).toBe('superseded');
 });
 
+test('A09：記録の保存後に画面の読み直しだけが失敗しても、もう一度「この内容で記録」を押せば二重に記録しない', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await page.goto('/#/calendar');
+  await page.getByRole('link', { name: '結果を記録' }).first().click();
+  await page.getByRole('radio', { name: '成功' }).click();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  // 保存は成功し、その後の読み直しだけが失敗する（画面は記録の確認のまま残る）
+  await page.evaluate(() => window.__kaishu!.failLoad(1));
+  await page.getByRole('button', { name: 'この内容で記録' }).click();
+  await expect.poll(async () => (await state(page)).resultEvents.length).toBe(1);
+  await expect(page.getByRole('button', { name: 'この内容で記録' })).toBeEnabled();
+  // 再送までに時刻が進んでも、最初の確定と同じ確定ID・確定日時で送り直すので、保存済みとして受け付けて画面を進める
+  await page.clock.setFixedTime(new Date('2026-10-14T00:05:00.000Z'));
+  await page.getByRole('button', { name: 'この内容で記録' }).click();
+  await page.waitForURL(/#\/calendar/);
+  const d = await state(page);
+  expect(d.resultEvents).toHaveLength(1);
+  expect(d.resultEvents[0]!.outcome).toBe('success');
+  expect(d.attempts.filter((a) => a.outcome === 'success')).toHaveLength(1);
+});
+
 test('A10：同日の取り込みで確認待ちになった予定は、そのまま確定できず、取り込み前の記録漏れとして装備を履歴のみにすれば記録できる', async ({ page }) => {
   await start(page, { data: seed, route: '/goals' });
   await addGoal(page, '主砲A', 6);

@@ -100,6 +100,18 @@ describe('入力元の推定', () => {
   });
 });
 
+describe('入力元の推定（素材）', () => {
+  it('改修対象と同じ装備・★を素材にも使ったとき、除くのは改修対象の1個だけで、素材の製作品の入力元は残す', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const snap = (transition: { kind: 'improve'; equipmentId: number; fromStar: number; toStar: number }) => ({ masterVersion: 'm', transition, fromName: '', toName: '', mode: 'normal' as const, entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null });
+    // 素材の X★0 を製作した実績（製作の鎖の最後が X★0 を出力する扱い）
+    const craft = ev('C', 1, { stepKey: 'g|craft:1|9:0>1|0', recipeSnapshot: snap({ kind: 'improve', equipmentId: 1, fromStar: 0, toStar: 0 } as never), occurredDateJst: '2026-10-12' });
+    const a = { attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t, scheduledDate: '2026-10-14', dayOrder: 1, outcome: 'none' as const, lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: null, cancelReason: null };
+    const deltas = [{ scope: 'equipment' as const, equipmentId: 1, star: 0, amount: -1 }, { scope: 'equipment' as const, equipmentId: 1, star: 0, amount: -1 }];
+    expect(inferInputSources([craft], a, deltas, { date: '2026-10-14', order: 1 })).toEqual(['C']);
+  });
+});
+
 describe('訂正の基準境界と依存', () => {
   it('基準に包含済みの scope は履歴のみに固定する', () => {
     const b: Baseline[] = baselinesFrom({ resources: { 8: 10, 7: 5 } }).map((x) => (x.scope === 'resource:8' ? { ...x, includedThroughSequence: 2 } : x));

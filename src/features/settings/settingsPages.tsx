@@ -265,7 +265,7 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   };
   const restore = async () => {
     if (!session?.check.ok) return;
-    const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, confirmedPlanHold: session.holdConfirmed || confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
+    const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, bundledMasterVersion: master.version, confirmedPlanHold: session.holdConfirmed || confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
     if (!r.ok) {
       // 復元前の保存の後に内容が変わったら、その保存には最新の内容が入っていないので、保存をやり直すまで復元しない
       if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') {

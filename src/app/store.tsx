@@ -77,6 +77,8 @@ interface StoreValue {
   rolloverAndReport: () => Promise<boolean>;
   /** 翌日処理を保存できず、再試行を待っている */
   rolloverPending: boolean;
+  /** このタブで確定が保存されるたびに増える（次の確定には新しい確定IDを使う） */
+  commandGeneration: number;
   recalculate: () => Promise<void>;
   importSession: ImportSession | null;
   setImportSession: (s: ImportSession | null) => void;
@@ -130,6 +132,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const dataRef = useRef<AppData>(initialData);
   const rolloverFailed = useRef(false);
   const [rolloverPending, setRolloverPending] = useState(false);
+  const [commandGeneration, setCommandGeneration] = useState(0);
   // 他タブの通知で表示用のデータを読み直しても、この版は更新しない（開いていた画面の確定を競合として扱う）
   const pageBase = useRef<CommandBase>(baseOf(initialData));
 
@@ -178,12 +181,16 @@ export function StoreProvider({ service, master, manifest, initialData, children
       setSaveMessage(null);
       try {
         const base = options?.base ?? pageBase.current;
-        const outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
+        let outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
+        // 同じ確定IDで別の内容が既に保存されていた（画面が残ったまま別の確定に移った場合など）なら、新しいIDで1回だけ確定し直す
+        if (outcome.status === 'COMMAND_ID_REUSED') outcome = await service.run(commandType, handler, payload, { ...base, commandId: newId('cmd') });
         const latest = await refresh();
         const message = messageFor(outcome);
         const ok = outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED';
         // このタブの確定が保存された後と、競合を知らせた後は、最新の版を画面の版にする
         if (ok || outcome.status === 'CONFLICT' || outcome.status === 'EPOCH_MISMATCH') pageBase.current = baseOf(latest);
+        // 保存できた確定のIDは使い終わり。同じ画面が残っていても次の確定は新しいIDで行う
+        if (ok) setCommandGeneration((g) => g + 1);
         if (ok) {
           broadcast();
           if ('recalc' in outcome && outcome.recalc === 'FAILED') {
@@ -293,6 +300,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
     capturePageBase,
     rolloverAndReport,
     rolloverPending,
+    commandGeneration,
     recalculate,
     importSession,
     setImportSession,
@@ -305,9 +313,18 @@ export function StoreProvider({ service, master, manifest, initialData, children
 
 /** 確定操作ごとの commandId。依存値（入力内容）が変わったら新しい ID にする */
 export function useCommandId(...deps: unknown[]): string {
-  const key = JSON.stringify(deps);
+  return useCommandStamp(...deps).commandId;
+}
+
+/**
+ * 確定IDと確定日時の組。同じ入力のまま確定し直すと同じIDと日時を送るので、保存済みなら ALREADY_APPLIED になる
+ * （確定日時を送るたびに作ると、内容が変わったと判定されて再送できない）。このタブで確定が保存されたら作り直す
+ */
+export function useCommandStamp(...deps: unknown[]): { commandId: string; now: string } {
+  const { commandGeneration } = useStore();
+  const key = JSON.stringify([commandGeneration, ...deps]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => newId('cmd'), [key]);
+  return useMemo(() => ({ commandId: newId('cmd'), now: new Date().toISOString() }), [key]);
 }
 
 /** 画面遷移ごとに、その画面を開いた時点の版を記録する（ルーターの内側に置く） */

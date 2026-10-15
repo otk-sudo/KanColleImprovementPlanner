@@ -4,6 +4,7 @@ import { Page } from '../../app/Shell';
 import { useCommandId, useStore } from '../../app/store';
 import { handleSetProtection } from '../../application/commands';
 import { protectionChangePreview } from '../../domain/import/apply';
+import { projectInventory } from '../../domain/inventory/projection';
 import { formatJstDateTime, formatJstMonthDayTime } from '../../domain/jst';
 import type { MaterialTotal } from '../../domain/planning/types';
 import { EquipmentImage, IMAGES_ENABLED, ShipImage } from '../../ui/GameImage';
@@ -327,7 +328,8 @@ export function ProtectionPage() {
   // 確認画面を開いたときの装備の取り込み。競合を知らせた後は、最新の取り込みに対する確認として読み直す
   const [snapshotAtOpen, setSnapshotAtOpen] = useState(() => projection.equipment.snapshotId);
   const preview = protectionChangePreview({ owned, goalUse, newManual: count });
-  const commandId = useCommandId(bucket, count, selected);
+  // 確定IDは、確認の前提（取り込み・確認待ちかどうか）が変わったら作り直す
+  const commandId = useCommandId(bucket, count, selected, snapshotAtOpen, reconciling);
   const name = equipLabel(master, equipmentId, star);
   const save = async () => {
     const r = await run(reconciling ? 'ResolveProtection' : 'SetProtection', handleSetProtection, {
@@ -344,9 +346,11 @@ export function ProtectionPage() {
       // 別のタブなどの変更と競合したら、最新の保護設定に読み直してから確認してもらう（古い値で上書きしない）
       if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') {
         const latest = r.latest.protections.find((p) => p.bucket === bucket);
-        const ids = latest?.instanceIds?.filter((id) => instances.some((i) => i.instanceId === id)) ?? [];
+        // 選んだ個体は、最新の所持にある同じ装備・★の個体だけ残す（消えた個体を見えない選択として残さない）
+        const latestInstances = (projectInventory(r.latest.baselines, r.latest.resultEvents, r.latest.drafts).equipment.instances ?? []).filter((i) => i.equipmentId === equipmentId && i.star === star);
+        const ids = latest?.instanceIds?.filter((id) => latestInstances.some((i) => i.instanceId === id)) ?? [];
         setSelected(ids);
-        setCount(useInstances ? ids.length : (latest?.count ?? 0));
+        setCount(useInstances || latestInstances.length > 0 ? ids.length : (latest?.count ?? 0));
         setSnapshotAtOpen(r.latest.baselines.find((b) => b.scope === 'equipment')?.snapshotId ?? null);
       }
       return setMessage(r.message);

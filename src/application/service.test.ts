@@ -19,7 +19,9 @@ import {
   handleSaveDraft,
   handleSaveGoal,
   handleSaveSettings,
+  handleApplyMaster,
   handleSetProtection,
+  handleSkipDate,
   recordOrderFor,
   type RecordResultPayload,
 } from './commands';
@@ -792,6 +794,27 @@ describe('レビュー指摘（PR #1）', () => {
     if (!blocked.ok) expect(blocked.errors[0]?.code).toBe('SUCCESSOR_HAS_RESULT');
   });
 
+  it('計画を保留・再計算待ちの間は、一日分のスキップも記録しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d = await s.load();
+    const payload = { date: s.today(), today: s.today(), eventIds: ['x1'], now: '' };
+    const held = handleSkipDate({ ...d, meta: { ...d.meta, masterReviewRequired: true } }, payload);
+    expect(!held.ok && held.errors[0]?.code).toBe('MASTER_REVIEW_REQUIRED');
+    const dirty = handleSkipDate({ ...d, meta: { ...d.meta, planDirty: true } }, payload);
+    expect(!dirty.ok && dirty.errors[0]?.code).toBe('PLAN_NOT_SAVED');
+  });
+
+  it('一日分のスキップの最後の1件を別の日へ移す訂正では、元の日の目印を外す', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const skip: ResultEvent = { eventId: 'e1', attemptId: 'a1@1', stepKey: 'e1', goalId: 'g1', originalSequence: 1, revision: 1, status: 'active', outcome: 'skip', occurredDateJst: '2026-10-14', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 2 }, resultEvents: [skip], daySkips: [{ date: '2026-10-14', createdAt: '' }] };
+    const r = handleCorrectResult(data, { eventId: 'e1', newOutcome: 'skip', newDeltas: [], occurredDateJst: '2026-10-13', historyOnlyScopes: [], reason: '', today: '2026-10-14', now: '' });
+    expect(r.ok && r.writes.remove?.daySkips).toEqual(['2026-10-14']);
+  });
+
   it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {
     const s = await service();
     await seedPlan(s);
@@ -940,6 +963,24 @@ describe('保護・復元', () => {
     const after = await s.load();
     expect(after.meta.revision).toBe(before.meta.revision);
     expect(after.attempts).toEqual(before.attempts);
+  });
+
+  it('新しいマスターの確認待ちの間、古いマスターを読み込んだタブは古い版を適用できず、書き込みもしない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const next = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'next' })), clock);
+    await next.init();
+    const held = await s.load();
+    expect([held.meta.masterReviewRequired, held.meta.pendingMasterVersion]).toEqual([true, 'next']);
+    // 古いタブ（読み込んだマスターは元の版）は、確認待ちを古い版で解除できない
+    const stale = await s.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: m.version }, await base(s));
+    expect(stale.status).toBe('WRITER_INCOMPATIBLE');
+    expect(handleApplyMaster(held, { masterVersion: m.version }).ok).toBe(false);
+    expect(await s.recalculate()).toBe('STALE_MASTER');
+    // 新しいタブは新しい版を適用できる
+    expect((await next.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: 'next' }, await base(next))).status).toBe('APPLIED');
+    const applied = await next.load();
+    expect([applied.meta.activeMasterVersion, applied.meta.masterReviewRequired, applied.meta.pendingMasterVersion]).toEqual(['next', false, null]);
   });
 
   it('マスターの確認で計算を保留している間は、記録の訂正もしない', async () => {

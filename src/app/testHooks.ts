@@ -13,6 +13,8 @@ declare global {
       recalc(): Promise<string>;
       /** 次の n 回の翌日処理を「保存できなかった」にする（保存失敗の表示の確認用） */
       failRollover(times: number): void;
+      /** 次の n 回の読み込みを失敗させる（保存後の読み直しが失敗したときの再送の確認用） */
+      failLoad(times: number): void;
     };
   }
 }
@@ -23,7 +25,7 @@ export function installTestHooks(service: AppService): void {
       const parsed = parseBackup(json, service.master.version);
       if (!parsed.ok) return `invalid: ${parsed.message} ${parsed.issues.join('; ')}`;
       // 起動直後の翌日処理・再計算と競合したら最新の revision で再試行する
-      const payload = { backup: parsed.backup, newEpoch: newId('epoch'), masterMissing: parsed.masterMissing, confirmedPlanHold: true, nowMs: service.clock.nowMs(), now: service.nowIso() };
+      const payload = { backup: parsed.backup, newEpoch: newId('epoch'), masterMissing: parsed.masterMissing, bundledMasterVersion: service.master.version, confirmedPlanHold: true, nowMs: service.clock.nowMs(), now: service.nowIso() };
       let status = 'CONFLICT';
       for (let i = 0; i < 5 && status === 'CONFLICT'; i++) {
         const data = await loadData(service.db);
@@ -45,6 +47,17 @@ export function installTestHooks(service: AppService): void {
         if (left > 0) {
           left--;
           return { moved: 0, recalc: null, saved: false };
+        }
+        return original();
+      };
+    },
+    failLoad(times: number) {
+      let left = times;
+      const original = service.load.bind(service);
+      service.load = async () => {
+        if (left > 0) {
+          left--;
+          throw new Error('読み込みの失敗（テスト）');
         }
         return original();
       };

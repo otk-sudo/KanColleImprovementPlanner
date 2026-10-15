@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Page } from '../../app/Shell';
-import { baseOf, useCommandId, useStore, type CommandBase, type RunResult } from '../../app/store';
+import { baseOf, useCommandStamp, useStore, type CommandBase, type RunResult } from '../../app/store';
 import { handleCorrectResult, handleRecordResult, handleSaveDraft, recordOrderFor } from '../../application/commands';
 import { projectInventory } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
@@ -112,7 +112,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   });
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<{ text: string; details?: ResultEvent[] } | null>(null);
-  const commandId = useCommandId(form);
+  // 確定IDと確定日時は入力内容ごとに固定する（保存済みのまま再送しても ALREADY_APPLIED になる）
+  const { commandId, now: stampedAt } = useCommandStamp(form);
   const [eventId] = useState(() => newId('ev'));
   if (!attempt || !form) {
     return (
@@ -185,7 +186,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
-      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: new Date().toISOString(), recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, { commandId, base: form.base });
+      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: stampedAt, recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, { commandId, base: form.base });
       if (!r.ok) {
         rebase(r);
         const deps = (r.errors[0]?.details as { dependents?: { eventId: string }[] } | undefined)?.dependents ?? [];
@@ -219,7 +220,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
         recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
-        now: new Date().toISOString(),
+        now: stampedAt,
       },
       { commandId, base: form.base },
     );
@@ -428,7 +429,7 @@ export function DraftConfirmPage() {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draftId] = useState(() => form?.draftId ?? newId('draft'));
-  const commandId = useCommandId(attemptId, checked);
+  const { commandId, now: stampedAt } = useCommandStamp(attemptId, checked, form);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, form?.draftId ?? null, ctx.attempt?.transition), [data, form?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !form || (form.outcome !== 'success' && form.outcome !== 'failure')) {
     return (
@@ -448,7 +449,7 @@ export function DraftConfirmPage() {
     const res = await run(
       'SaveDraftResult',
       handleSaveDraft,
-      { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)), now: new Date().toISOString() },
+      { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)), now: stampedAt },
       { commandId, base: form.base },
     );
     if (!res.ok) {
@@ -560,7 +561,7 @@ export function PastRecordPage() {
   const [answers, setAnswers] = useState<Partial<Record<ScopeKey, 'apply' | 'historyOnly'>>>(cached?.scopeAnswers ?? {});
   const [message, setMessage] = useState<string | null>(null);
   const [eventId] = useState(() => newId('ev'));
-  const commandId = useCommandId(attemptId, answers);
+  const { commandId, now: stampedAt } = useCommandStamp(attemptId, answers, cached);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, cached?.draftId ?? null, ctx.attempt?.transition), [data, cached?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !cached || (cached.outcome !== 'success' && cached.outcome !== 'failure')) {
     return (
@@ -630,7 +631,7 @@ export function PastRecordPage() {
         recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
-        now: new Date().toISOString(),
+        now: stampedAt,
       },
       { commandId, base: form.base },
     );

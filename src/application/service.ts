@@ -45,10 +45,14 @@ export class AppService {
         data.meta.revision,
         (fresh) => {
           // 既に計算を保留している（マスターの参照がない復元を含む）なら、利用者が確認するまで版を変えない
-          if (fresh.meta.masterReviewRequired) return null;
+          // （確認待ちを始めた版の記録がない旧データだけ、このタブの版を記録する）
+          if (fresh.meta.masterReviewRequired) return fresh.meta.pendingMasterVersion ? null : { meta: { pendingMasterVersion: this.master.version } };
           const hasPlans = fresh.goals.length > 0 || fresh.attempts.length > 0;
           return {
-            meta: hasPlans && fresh.meta.activeMasterVersion !== null ? { masterReviewRequired: true } : { activeMasterVersion: this.master.version, masterReviewRequired: fresh.meta.masterReviewRequired, planDirty: true },
+            meta:
+              hasPlans && fresh.meta.activeMasterVersion !== null
+                ? { masterReviewRequired: true, pendingMasterVersion: this.master.version }
+                : { activeMasterVersion: this.master.version, masterReviewRequired: fresh.meta.masterReviewRequired, planDirty: true },
           };
         },
         this.nowIso(),
@@ -87,11 +91,13 @@ export class AppService {
   }
 
   /**
-   * このタブが読み込んだマスターが、保存されているデータの適用済みマスターより古いか（別のタブが新しいマスターを適用した後）。
+   * このタブが読み込んだマスターが、保存されているデータの適用済み（または確認待ちの）マスターと違うか（別のタブが新しいマスターを読み込んだ後）。
    * 古いマスターで計画を書き換えないよう、書き込みと再計算を止めて再読み込みを求める
    */
   staleMaster(meta: AppData['meta']): boolean {
-    return !meta.masterReviewRequired && meta.activeMasterVersion !== null && meta.activeMasterVersion !== this.master.version;
+    // 確認待ちの間は、確認待ちを始めたマスターの版と違うタブ（古いマスターのタブ）を止める
+    if (meta.masterReviewRequired) return !!meta.pendingMasterVersion && meta.pendingMasterVersion !== this.master.version;
+    return meta.activeMasterVersion !== null && meta.activeMasterVersion !== this.master.version;
   }
 
   /** 利用者の確定操作を実行し、事実の保存に成功したら計画を再計算する */
@@ -110,8 +116,8 @@ export class AppService {
   async recalculate(): Promise<RecalcStatus> {
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
-      if (data.meta.masterReviewRequired) return 'MASTER_REVIEW';
       if (this.staleMaster(data.meta)) return 'STALE_MASTER';
+      if (data.meta.masterReviewRequired) return 'MASTER_REVIEW';
       let plan: PlanResult;
       try {
         plan = this.computePlan(data);

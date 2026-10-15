@@ -115,6 +115,16 @@ describe('バックアップの検証', () => {
     expect(parseBackup(JSON.stringify(backup({ meta, attempts, resultEvents: [event], drafts: [draft('A', 'finalized')] })), 'm1').ok).toBe(true);
   });
 
+  it('有効な実績と、その試行の結果・状態が食い違うバックアップを拒否する', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const attempt = (outcome: 'success' | 'none', lifecycle: 'active' | 'cancelled' = 'active') => ({ attemptId: 'A', stepKey: 's', goalId: 'g', transition: t, scheduledDate: '2026-10-13', dayOrder: 1, outcome, lifecycle, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: 'e1', cancelReason: null });
+    const event = { eventId: 'e1', attemptId: 'A', stepKey: 's', goalId: 'g', originalSequence: 1, revision: 1, status: 'active' as const, outcome: 'success' as const, occurredDateJst: '2026-10-13', occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const meta = { nextSequence: 2, lastProcessedDateJst: null, revision: 1 };
+    expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('none')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('success', 'cancelled')] })), 'm1').ok).toBe(false);
+    expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('success')] })), 'm1').ok).toBe(true);
+  });
+
   it('数量が負の基準在庫を拒否する', () => {
     const bad = backup({ baselines: baselinesFrom({ resources: { 8: 10 } }).map((b) => ({ ...b, value: -1 })) });
     expect(parseBackup(JSON.stringify(bad), 'm1').ok).toBe(false);

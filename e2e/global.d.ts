@@ -8,6 +8,7 @@ declare global {
       state(): Promise<unknown>;
       recalc(): Promise<string>;
       failRollover(times: number): void;
+      failLoad(times: number): void;
     };
   }
 }

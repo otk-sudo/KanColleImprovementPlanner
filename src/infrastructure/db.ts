@@ -30,6 +30,8 @@ export interface Meta {
   activeMasterVersion: string | null;
   /** 復元時に必要マスターがない・マスター更新の確認待ち。解消まで自動配置しない */
   masterReviewRequired: boolean;
+  /** 確認待ちを始めたタブのマスターの版（この版を読み込んだタブだけが適用・書き込みできる）。旧データでは未設定 */
+  pendingMasterVersion?: string | null;
   createdAt: string;
   lastClockMs: number;
   lastRollover: RolloverReport | null;

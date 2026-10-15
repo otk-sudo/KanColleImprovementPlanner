@@ -211,6 +211,39 @@ test('A10：同じ確認待ちを2つのタブで再開したら、後から保�
   expect((await state(b)).drafts[0]!.knownConsumptions).toContainEqual({ scope: 'resource:8', amount: -3 });
 });
 
+test('A10：保護する個体を選んでいる間に別のタブで個体が入れ替わったら、競合後は最新の個体から選び直せる', async ({ context }) => {
+  const slot = (ids: number[]) => `svdata=${JSON.stringify({ api_result: 1, api_data: ids.map((id) => ({ api_id: id, api_slotitem_id: ID.mainGunA, api_level: 6 })) })}`;
+  const route = `/inventory/protection/${ID.mainGunA}:6`;
+  const a = await context.newPage();
+  // A は通知が届かない古いタブ（競合するまで画面の個体の一覧が古いまま）
+  await a.addInitScript(() => {
+    // @ts-expect-error テスト用にタブ間通知を無効化する
+    delete window.BroadcastChannel;
+  });
+  await start(a, { data: seed, route: '/import' });
+  await pasteAndApply(a, slot([1, 2]));
+  await a.goto(`/#${route}`);
+  await a.getByLabel('個体ID 1').check();
+  await a.getByLabel('個体ID 2').check();
+  await a.getByRole('button', { name: '保護2個に変更' }).click();
+  await a.waitForURL(/#\/inventory\/equipment/);
+  await a.goto(`/#${route}`);
+  // 別のタブで、同じ★の個体が入れ替わった所持を取り込む
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await pasteAndApply(b, slot([3, 4]));
+  await expect(a.getByLabel('個体ID 1')).toBeVisible(); // A の画面はまだ古い個体の一覧
+  await a.getByRole('button', { name: '保護2個に変更' }).click();
+  await expect(a.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  // 消えた個体は選択から外れ、最新の個体から選び直して保存できる
+  await expect(a.getByRole('button', { name: '保護0個に変更' })).toBeVisible();
+  await a.getByLabel('個体ID 3').check();
+  await a.getByRole('button', { name: '保護1個に変更' }).click();
+  await a.waitForURL(/#\/inventory\/equipment/);
+  expect((await state(a)).protections.find((x) => x.bucket === `${ID.mainGunA}:6`)?.instanceIds).toEqual([3]);
+});
+
 test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
   const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
   const a = await context.newPage();

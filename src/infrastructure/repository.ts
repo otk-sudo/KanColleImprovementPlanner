@@ -85,6 +85,7 @@ export function initialMeta(now: string, nowMs: number): Meta {
     planDirty: false,
     activeMasterVersion: null,
     masterReviewRequired: false,
+    pendingMasterVersion: null,
     createdAt: now,
     lastClockMs: nowMs,
     lastRollover: null,

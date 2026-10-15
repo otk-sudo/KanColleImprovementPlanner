@@ -158,9 +158,15 @@ export function inferInputSources(events: ResultEvent[], attempt: Attempt, delta
     })
     .sort((a, b) => a.originalSequence - b.originalSequence)[0];
   if (producer) out.push(producer.eventId);
+  // 成功では改修対象そのもの（入力★の −1）を1個だけ除く。同じ装備・★を素材にも使った分は素材として扱う
+  const to = transitionTo(attempt.transition);
+  let targetSkipped = !deltas.some((d) => d.scope === 'equipment' && d.equipmentId === to.equipmentId && d.star === to.star && d.amount > 0);
   for (const d of deltas) {
     if (d.scope !== 'equipment' || d.amount >= 0) continue;
-    if (d.equipmentId === from.equipmentId && d.star === from.star && d.amount === -1) continue;
+    if (!targetSkipped && d.equipmentId === from.equipmentId && d.star === from.star && d.amount === -1) {
+      targetSkipped = true;
+      continue;
+    }
     let need = -d.amount;
     for (const e of active.filter((x) => x.stepKey.includes(`|craft:${d.equipmentId}|`) && !consumedBy.has(x.eventId) && !out.includes(x.eventId)).sort((a, b) => a.originalSequence - b.originalSequence)) {
       const to = transitionTo(e.recipeSnapshot!.transition);

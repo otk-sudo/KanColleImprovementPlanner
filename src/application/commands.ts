@@ -371,6 +371,9 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
 /** 日全体のスキップ（S25）：当日の未実施だけを対象にし、完了済みは変えない */
 export function handleSkipDate(data: AppData, p: { date: DateJst; today: DateJst; eventIds: string[]; now: string }): HandlerResult<{ skipped: number }> {
   if (p.date !== p.today) return fail('SKIP_NOT_TODAY', '日全体のスキップは今日だけに記録できます。');
+  // 個別のスキップ（結果の記録）と同じく、計画の保留中・再計算待ちの間は記録しない
+  if (data.meta.masterReviewRequired) return fail('MASTER_REVIEW_REQUIRED', MASTER_REVIEW_MESSAGE);
+  if (data.meta.planDirty) return fail('PLAN_NOT_SAVED', PLAN_NOT_SAVED_MESSAGE);
   const targets = data.attempts.filter((a) => a.scheduledDate === p.date && a.lifecycle === 'active' && a.outcome === 'none').sort((a, b) => a.dayOrder - b.dayOrder);
   if (p.eventIds.length < targets.length) return fail('IDS_MISSING', '内部エラー：記録IDが不足しています。');
   let seq = data.meta.nextSequence;
@@ -575,7 +578,9 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   }
   // 日単位のスキップの目印は、その日のスキップがほかに残っていない場合だけ外す（残っている間はその日に新しい予定を置かない）
   const otherSkips = others.some((x) => x.status === 'active' && x.outcome === 'skip' && x.occurredDateJst === e.occurredDateJst);
-  const daySkips = p.newOutcome !== 'skip' && e.outcome === 'skip' && !otherSkips ? data.daySkips.filter((d) => d.date === e.occurredDateJst).map((d) => d.date) : [];
+  // 訂正後も同じ日のスキップのままなら目印は残す。別の結果・別の日に変わったら（ほかに残っていなければ）外す
+  const stillSkipOnDay = p.newOutcome === 'skip' && p.occurredDateJst === e.occurredDateJst;
+  const daySkips = e.outcome === 'skip' && !stillSkipOnDay && !otherSkips ? data.daySkips.filter((d) => d.date === e.occurredDateJst).map((d) => d.date) : [];
   return { ok: true, writes: { put: { resultEvents: [corrected], attempts }, remove: { daySkips }, meta: { planDirty: true } }, result: { revision: corrected.revision } };
 }
 
@@ -621,6 +626,8 @@ export interface RestorePayload {
   backup: BackupData;
   newEpoch: string;
   masterMissing: boolean;
+  /** 復元するタブが読み込んでいるマスターの版（計画を保留する場合に、確認できる版として記録する） */
+  bundledMasterVersion?: string;
   confirmedPlanHold: boolean;
   nowMs: number;
   now: string;
@@ -638,6 +645,7 @@ export function handleRestore(data: AppData, p: RestorePayload): HandlerResult<{
     planDirty: true,
     activeMasterVersion: b.masterVersion,
     masterReviewRequired: p.masterMissing,
+    pendingMasterVersion: p.masterMissing ? (p.bundledMasterVersion ?? null) : null,
     createdAt: data.meta.createdAt,
     lastClockMs: p.nowMs,
     lastRollover: null,
@@ -671,8 +679,12 @@ export function handleAcknowledgeClockWarning(data: AppData): HandlerResult<null
   return { ok: true, writes: { meta: { clockWarning: null } }, result: null };
 }
 
-export function handleApplyMaster(_data: AppData, p: { masterVersion: string }): HandlerResult<null> {
-  return { ok: true, writes: { meta: { activeMasterVersion: p.masterVersion, masterReviewRequired: false, planDirty: true } }, result: null };
+export function handleApplyMaster(data: AppData, p: { masterVersion: string }): HandlerResult<null> {
+  // 確認待ちを始めたマスターの版だけを適用する（古いマスターを読み込んだタブが古い版で確認待ちを解除しない）
+  if (data.meta.masterReviewRequired && data.meta.pendingMasterVersion && p.masterVersion !== data.meta.pendingMasterVersion) {
+    return fail('MASTER_VERSION_MISMATCH', 'このタブは古い共通マスターを読み込んでいます。再読み込みしてから確認してください。');
+  }
+  return { ok: true, writes: { meta: { activeMasterVersion: p.masterVersion, masterReviewRequired: false, pendingMasterVersion: null, planDirty: true } }, result: null };
 }
 
 export type { ValidationIssue };

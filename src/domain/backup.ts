@@ -272,6 +272,8 @@ export function referentialIssues(b: BackupData): string[] {
     if (!attemptIds.has(e.attemptId)) issues.push(`実績 ${e.eventId} の試行がありません`);
     // 有効な実績は、その試行が結果として指している（試行と実績の対応が双方向で一致する）
     else if (e.status === 'active' && attemptById.get(e.attemptId)!.resultEventId !== e.eventId) issues.push(`実績 ${e.eventId} がその試行の結果として登録されていません`);
+    // 有効な実績の試行は、取り消されておらず、結果が実績と同じ
+    else if (e.status === 'active' && (attemptById.get(e.attemptId)!.outcome !== e.outcome || attemptById.get(e.attemptId)!.lifecycle === 'cancelled')) issues.push(`実績 ${e.eventId} と試行 ${e.attemptId} の結果・状態が一致しません`);
     for (const s of e.inputSourceEventIds) if (!eventIds.has(s)) issues.push(`実績 ${e.eventId} の前提実績 ${s} がありません`);
     if (e.fromDraftId) {
       // 元になった下書きは同じ試行の確定済みの下書き（別の試行の下書きを指すと、取り込み済みの判定を取り違える）

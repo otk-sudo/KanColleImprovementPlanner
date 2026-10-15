@@ -183,8 +183,7 @@ test('S09 実績・繰り越し', async ({ page }) => {
   const r1 = hist('2026-10-12', 1, imp(ID.mainGunA, 4), 'success');
   const r2 = hist('2026-10-09', 2, imp(ID.radarC, 3), 'failure', 'g-r');
   const r3 = hist('2026-10-07', 3, imp(ID.seaplaneB, 2), 'skip', 'g-s');
-  // 10/07 のスキップは翌日処理済み（後継は工程が不要になり取消）という状態にする
-  r3.attempt.lifecycle = 'cancelled';
+  // 10/07 のスキップは目標（g-s）を削除済みのため、翌日処理で引き継がず結果だけが残る状態にする
   const pending: Attempt = { attemptId: 'g-main|1001:5>6|0@1', stepKey: 'g-main|1001:5>6|0', goalId: 'g-main', transition: imp(ID.mainGunA, 5), scheduledDate: '2026-10-09', dayOrder: 2, outcome: 'none', lifecycle: 'active', executionGate: 'ready', predecessorAttemptId: null, createdAt: IMPORTED_AT, helperShipId: ID.shipAKai2, mode: 'guaranteed', resultEventId: null, cancelReason: null };
   await open(
     page,
