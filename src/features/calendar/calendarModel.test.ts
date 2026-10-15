@@ -3,7 +3,9 @@ import { DEFAULT_SETTINGS } from '../../domain/model';
 import type { Placement, PlanResult } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { attempt } from '../../test-support/planFixtures';
-import { buildDays, dayRequirements, latestAttemptOf, monthCellSummary, type DayEntry } from './calendarModel';
+import { buildDays, dayRequirements, entryCost, latestAttemptOf, monthCellSummary, type DayEntry } from './calendarModel';
+import { buildMasterIndex } from '../../domain/master';
+import { fixtureMaster } from '../../test-support/fixtureMaster';
 
 const t = (from: number) => ({ kind: 'improve' as const, equipmentId: 1, fromStar: from, toStar: from + 1 });
 
@@ -94,5 +96,17 @@ describe('月表示のセルの集計（S01）', () => {
     expect(monthCellSummary([entry('planned'), entry('tentative'), entry('pending'), entry('superseded')])).toBe('3回 / ★+3');
     expect(monthCellSummary([entry('planned'), entry('success', conv)])).toBe('2回 / ★+1・更新1');
     expect(monthCellSummary([entry('provisional', conv)])).toBe('1回 / 更新1');
+  });
+});
+
+describe('記録済みの結果の費用（S02・S18）', () => {
+  it('記録時のレシピの費用で表示し、現在のマスターの変更に左右されない', () => {
+    const m = buildMasterIndex(fixtureMaster());
+    const plannedCost = { fuel: 1, ammo: 2, steel: 3, bauxite: 4, devmats: 5, screws: 6, equipment: [{ equipmentId: 2, count: 1 }], useItems: [] };
+    // 現在のマスターに改修データがない装備（ID 999）でも、保存した費用を表示する
+    const event = { recipeSnapshot: { masterVersion: 'old', transition: t(0), fromName: '', toName: '', mode: 'guaranteed', entryIndex: 3, plannedCost, helperShipId: null, helperShipName: null } } as unknown as DayEntry['event'];
+    const e: DayEntry = { kind: 'success', attemptId: 'a', stepKey: 's', goalId: 'g', transition: { kind: 'improve', equipmentId: 999, fromStar: 0, toStar: 1 }, placement: null, attempt: null, event, order: 1 };
+    const cost = entryCost(m, e)!;
+    expect([cost.fuel, cost.devmats.normal, cost.devmats.guaranteed, cost.screws.guaranteed, cost.equipment]).toEqual([1, 5, 5, 6, [{ equipmentId: 2, count: 1 }]]);
   });
 });

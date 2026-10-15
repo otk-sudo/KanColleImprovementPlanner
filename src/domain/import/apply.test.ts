@@ -59,6 +59,16 @@ describe('取り込みのプレビュー', () => {
     expect(chosen.items[0]?.after).toBe(20);
   });
 
+  it('解析時の注意（アイテムの部分応答など）を、採用した入力の分だけプレビューに残す', () => {
+    const items = parsed(`svdata=${JSON.stringify({ api_result: 1, api_data: [{ api_id: 2, api_count: 3 }] })}`, { declaredKind: 'useItem' });
+    const p = buildImportPreview([items], {}, projectInventory([], [], []), [], [], m);
+    expect(p.parserWarnings.map((w) => w.code)).toEqual(['USEITEM_PARTIAL']);
+    // 競合で採用しなかった入力の注意は出さない
+    const other = parsed(`svdata=${JSON.stringify({ api_result: 1, api_data: [{ api_id: 2, api_count: 5 }] })}`, { declaredKind: 'useItem' });
+    const chosen = buildImportPreview([items, other], { 'item:2': 1 }, projectInventory([], [], []), [], [], m);
+    expect(chosen.parserWarnings).toHaveLength(1);
+  });
+
   it('マスターにない装備IDは警告し、名称を推測しない', () => {
     const p = buildImportPreview([parsed('[{"id":99999,"lv":0}]')], {}, projectInventory([], [], []), [], [], m);
     expect(p.unknownIds.equipment).toEqual([99999]);

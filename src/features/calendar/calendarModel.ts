@@ -1,5 +1,5 @@
 import { compareDate, type DateJst, weekdayOf } from '../../domain/jst';
-import { transitionTo, type Transition } from '../../domain/master';
+import { transitionOptions, transitionTo, type AttemptCost, type MasterIndex, type Transition } from '../../domain/master';
 import type { Attempt, ResultEvent, Settings } from '../../domain/model';
 import type { CostKey, Placement, PlanResult } from '../../domain/planning/types';
 import { attemptSeq, costItems } from '../../domain/planning/plan';
@@ -167,4 +167,19 @@ export function monthCellSummary(entries: DayEntry[]): string {
   const converts = progress.length - improves;
   const parts = [improves > 0 ? `★+${improves}` : '', converts > 0 ? `更新${converts}` : ''].filter((x) => x !== '');
   return parts.length > 0 ? `${visible.length}回 / ${parts.join('・')}` : `${visible.length}回`;
+}
+
+/**
+ * 予定・結果の費用。予定は配置の費用、記録済みの結果は記録時のレシピに保存した費用（マスター更新の影響を受けない）。
+ * 保存した費用がない古い記録だけ、記録時のエントリを現在のマスターから引く。
+ */
+export function entryCost(master: MasterIndex, e: DayEntry): AttemptCost | null {
+  if (e.placement?.cost) return e.placement.cost;
+  const saved = e.event?.recipeSnapshot?.plannedCost ?? null;
+  if (saved) {
+    return { fuel: saved.fuel, ammo: saved.ammo, steel: saved.steel, bauxite: saved.bauxite, devmats: { normal: saved.devmats, guaranteed: saved.devmats }, screws: { normal: saved.screws, guaranteed: saved.screws }, equipment: saved.equipment, useItems: saved.useItems };
+  }
+  const opts = transitionOptions(master, e.transition);
+  const idx = e.event?.recipeSnapshot?.entryIndex ?? null;
+  return (opts.find((o) => o.entryIndex === idx) ?? opts[0])?.cost ?? null;
 }

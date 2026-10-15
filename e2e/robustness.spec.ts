@@ -95,6 +95,19 @@ test('A10：別のタブで削除した目標を、先に開いていた編集�
   expect((await state(b)).goals.some((g) => g.goalId === 'g1')).toBe(false);
 });
 
+test('A07：端末の時刻が前回より戻ったら警告を表示し、確認するまで残す', async ({ page }) => {
+  await start(page, { data: seed, route: '/calendar' });
+  await page.clock.setFixedTime(new Date('2026-10-13T23:00:00.000Z')); // 10/14 08:00 JST（1時間戻る）
+  await page.reload();
+  await page.waitForSelector('h1');
+  await expect(page.getByText('端末の時刻が前回より戻っています。')).toBeVisible();
+  await page.goto('/#/history');
+  await expect(page.getByText('端末の時刻が前回より戻っています。')).toBeVisible();
+  await page.getByRole('button', { name: '時刻の警告を確認しました' }).click();
+  await expect(page.getByText('端末の時刻が前回より戻っています。')).toHaveCount(0);
+  expect((await state(page)).meta.clockWarning).toBeNull();
+});
+
 test('A10/P17：保存途中で容量不足になっても事実を保存せず、入力を保ったまま再試行できる', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as { __failWrites: boolean };

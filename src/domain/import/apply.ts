@@ -2,7 +2,7 @@ import type { InventoryProjection } from '../inventory/projection';
 import { bucketKey, isItemScope, isResourceScope, scopeId, sortScopes, type ScopeKey, type ScopeUpdate } from '../inventory/types';
 import type { MasterIndex } from '../master';
 import type { Baseline, Protection } from '../model';
-import type { ImportKind, ParsedImport } from './parse';
+import type { ImportKind, ImportWarning, ParsedImport } from './parse';
 
 // 取り込み内容を「対象範囲の最新在庫」として反映する（design/06・13）。
 // 反映時点までの実績は新しい基準に含め、再減算しない。対象外の scope は基準・境界とも維持する。
@@ -39,6 +39,8 @@ export interface ImportPreview {
   unknownIds: { equipment: number[]; ships: number[]; items: number[] };
   noChange: boolean;
   noChangeReasons: string[];
+  /** 採用した入力の解析時の注意（アイテムの部分応答など）。装備・艦娘の0件は items から別に示す */
+  parserWarnings: ImportWarning[];
 }
 
 export function scopeLabel(m: MasterIndex, scope: ScopeKey): string {
@@ -129,7 +131,15 @@ export function buildImportPreview(
     items: updates.filter((u) => isItemScope(u.scope)).map((u) => scopeId(u.scope as `item:${number}`)).filter((id) => !m.useItems.has(id)),
   };
   const noChangeReasons = inputs.map((p) => p.noUpdateReason).filter((r): r is string => !!r);
-  return { items, updates, kept, conflicts, protectionIssues, unknownIds, noChange: updates.length === 0, noChangeReasons };
+  const usedInputs = new Set(items.map((i) => i.sourceIndex));
+  const parserWarnings: ImportWarning[] = [];
+  for (const i of [...usedInputs].sort((a, b) => a - b)) {
+    for (const w of inputs[i]!.warnings) {
+      if (w.code === 'EMPTY_EQUIPMENT' || w.code === 'EMPTY_SHIPS') continue;
+      if (!parserWarnings.some((x) => x.code === w.code && x.message === w.message)) parserWarnings.push(w);
+    }
+  }
+  return { items, updates, kept, conflicts, protectionIssues, unknownIds, noChange: updates.length === 0, noChangeReasons, parserWarnings };
 }
 
 /** プレビューで scope ごとに採用した入力（sources の添字） */

@@ -464,6 +464,19 @@ describe('レビュー指摘（PR #1）', () => {
     if (!r.ok) expect(r.errors[0]?.code).toBe('PREDECESSOR_PENDING');
   });
 
+  it('確認待ち（reviewRequired）の予定は、装備を履歴だけに記録する場合を除き、実施済み・確認待ちとしても保存しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const data = { ...d0, attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, executionGate: 'reviewRequired' as const } : x)) };
+    const payload = { draftId: 'd', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'success' as const, knownConsumptions: [], unknownScopes: ['resource:8' as const], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' };
+    const r = handleSaveDraft(data, payload);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe('REVIEW_REQUIRED');
+    expect(handleSaveDraft(data, { ...payload, scopeAnswers: { equipment: 'historyOnly' } }).ok).toBe(true);
+  });
+
   it('消費を訂正すると入力元を推定し直す（製作品の消費をなくせば製作の実績を拘束せず、加えれば入力元にする）', async () => {
     const s = await service();
     await seedPlan(s);
@@ -506,6 +519,25 @@ describe('レビュー指摘（PR #1）', () => {
     expect(r.ok && r.writes.put?.resultEvents?.[0]?.occurredOrder).toBe(2);
   });
 
+  it('後の日付の成功だけが作った★を、それより前の日付の記録で消費しない（実施日時の順に所持を確かめる）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    // 10/14 に主砲A ★5→★6 が成功（★6 はこの成功でだけできる）
+    expect((await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'success'), await base(s))).status).toBe('APPLIED');
+    const d0 = await s.load();
+    const consumer = { ...a, attemptId: 'c|1001:6>7|0@1', stepKey: 'c|1001:6>7|0', goalId: 'c', transition: { kind: 'improve' as const, equipmentId: FX.mainGunA, fromStar: 6, toStar: 7 }, scheduledDate: '2026-10-13', outcome: 'none' as const, resultEventId: null };
+    const data = { ...d0, attempts: [...d0.attempts, consumer] };
+    const deltas = buildDeltas({ transition: consumer.transition, outcome: 'success', consumption: { resources: { 8: 1 }, equipment: [], useItems: {} } });
+    const payload = { ...(await recordPayload(s, a.attemptId, 'success')), attemptId: consumer.attemptId, occurredDateJst: '2026-10-13', deltas };
+    // 最終的な所持（★6 が1個）では足りるが、10/13 の時点では★6 がない
+    const early = handleRecordResult(data, payload);
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.errors[0]?.code).toBe('BACKWARD_DEPENDENCY');
+    // 成功より後の日付なら記録できる
+    expect(handleRecordResult(data, { ...payload, occurredDateJst: '2026-10-14' }).ok).toBe(true);
+  });
+
   it('実施日より後に記録された成功を入力元にしない（日付が逆向きの依存は保存しない）', async () => {
     const s = await service();
     await seedPlan(s);
@@ -517,6 +549,15 @@ describe('レビュー指摘（PR #1）', () => {
     // 推定：10/13 に実施した後続は、10/14 の成功を入力元にしない
     expect(inferInputSources(d.resultEvents, consumerAttempt, [], { date: '2026-10-13', order: 1 })).toEqual([]);
     expect(inferInputSources(d.resultEvents, consumerAttempt, [], { date: '2026-10-14', order: 9 })).toEqual([producer.eventId]);
+  });
+});
+
+describe('目標の検証', () => {
+  it('完成品として残す個数はバックアップで復元できる上限（9,999）までにする', async () => {
+    const s = await service();
+    const d = await s.load();
+    expect(handleSaveGoal(d, { goal: goal({ count: 10000 }), isNew: true }).ok).toBe(false);
+    expect(handleSaveGoal(d, { goal: goal({ count: 9999 }), isNew: true }).ok).toBe(true);
   });
 });
 
@@ -565,6 +606,23 @@ describe('保護・復元', () => {
     expect(stale?.status).toBe('APPLIED'); // 新しい画面からの保存は可能
     const fromOldTab = await s.run('ImportInventory', handleImport, { ...updates('[{"api_id":8,"api_value":2}]'), snapshotId: 's', now: '' }, { datasetEpoch: oldTab.datasetEpoch, expectedRevision: restored.meta.revision });
     expect(fromOldTab.status).toBe('EPOCH_MISMATCH');
+  });
+
+  it('新しいマスターでの計算保留を保存できなければ起動を止め、古い版のまま計画を表示しない', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const s2 = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'next' })), clock);
+    const spy = vi.spyOn(db.meta, 'put').mockImplementationOnce(() => {
+      const e = new Error('quota');
+      e.name = 'QuotaExceededError';
+      throw e;
+    });
+    await expect(s2.init()).rejects.toThrow(/共通マスター/);
+    spy.mockRestore();
+    expect((await s2.load()).meta.masterReviewRequired).toBe(false);
+    // 保存できれば計算保留になる
+    await s2.init();
+    expect((await s2.load()).meta.masterReviewRequired).toBe(true);
   });
 
   it('P30：新しいマスターで過去実績のレシピが消えても実績は残り、将来の予定は確認待ちにする', async () => {

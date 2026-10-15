@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isValidDate } from './jst';
-import type { Attempt, Baseline, DaySkip, DraftResult, Goal, PreferredHelper, Protection, ResultEvent, Settings } from './model';
+import { MAX_GOAL_COUNT, type Attempt, type Baseline, type DaySkip, type DraftResult, type Goal, type PreferredHelper, type Protection, type ResultEvent, type Settings } from './model';
 
 // バックアップ（design/10・14）。生のAPIレスポンス・認証情報は含めない。
 // 復元は全体検証後に一括置換し、未知の新しい版は拒否する。旧版は純粋な移行を順に適用する。
@@ -138,7 +138,7 @@ const goal = z.object({
   goalId: z.string(),
   equipmentId: z.number().int().positive(),
   targetStar: z.number().int().min(0).max(10),
-  count: z.number().int().positive().max(9999),
+  count: z.number().int().positive().max(MAX_GOAL_COUNT),
   matchMode: z.enum(['atLeast', 'exact']),
   priority: z.number().int().positive(),
   createdAt: z.string(),

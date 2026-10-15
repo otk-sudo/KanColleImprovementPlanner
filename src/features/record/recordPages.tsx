@@ -338,7 +338,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
               キャンセル
             </Link>
             {mode !== 'correct' && form.outcome !== 'skip' ? (
-              <button type="button" className="btn" style={{ width: 260 }} disabled={attempt.executionGate === 'predecessorPending'} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
+              <button type="button" className="btn" style={{ width: 260 }} disabled={attempt.executionGate === 'predecessorPending' || (attempt.executionGate === 'reviewRequired' && form.scopeAnswers.equipment !== 'historyOnly')} onClick={() => (form.outcome === null ? setMessage({ text: '先に結果（成功・失敗）を選んでください。消費が分からない項目は未入力のままで構いません。' }) : toDraft())}>
                 実施済み・確認待ち
               </button>
             ) : (
@@ -677,7 +677,7 @@ export function PastRecordPage() {
         <Link className="btn" to={`/attempts/${encodeURIComponent(attemptId)}/record`} style={{ width: 200 }}>
           入力へ戻る
         </Link>
-        <button type="button" className="btn" style={{ width: 300 }} disabled={attempt.executionGate === 'predecessorPending'} onClick={toDraft}>
+        <button type="button" className="btn" style={{ width: 300 }} disabled={attempt.executionGate === 'predecessorPending' || (attempt.executionGate === 'reviewRequired' && answers.equipment !== 'historyOnly')} onClick={toDraft}>
           実施済み・確認待ちへ
         </button>
         <span className="spacer" />

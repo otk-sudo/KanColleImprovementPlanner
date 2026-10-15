@@ -6,7 +6,7 @@ import { handleDeleteGoal, handleReorderGoals, handleSaveGoal, handleSetPreferre
 import { equipmentStars } from '../../domain/inventory/projection';
 import { WEEKDAY_LABELS } from '../../domain/jst';
 import { enumerateRoutes, parseRouteKey, transitionOptions, type MasterIndex } from '../../domain/master';
-import type { Goal, MaterialRouteChoice } from '../../domain/model';
+import { MAX_GOAL_COUNT, type Goal, type MaterialRouteChoice } from '../../domain/model';
 import type { PlanResult, PlanStep, UnplacedReason } from '../../domain/planning/types';
 import { UNPLACED_REASON_LABELS } from '../../domain/planning/types';
 import { newId } from '../../infrastructure/repository';
@@ -291,7 +291,7 @@ export function GoalFormPage() {
                   −
                 </button>
                 <output aria-live="polite">{form.count}</output>
-                <button type="button" aria-label="1個増やす" onClick={() => set({ count: form.count + 1 })}>
+                <button type="button" aria-label="1個増やす" disabled={form.count >= MAX_GOAL_COUNT} onClick={() => set({ count: Math.min(MAX_GOAL_COUNT, form.count + 1) })}>
                   ＋
                 </button>
               </div>

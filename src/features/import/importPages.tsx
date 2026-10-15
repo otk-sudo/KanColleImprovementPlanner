@@ -310,6 +310,7 @@ function PreviewWarnings({ preview }: { preview: ImportPreview }) {
   if (items.some((i) => i.scope === 'equipment' && i.after === 0)) warnings.push('装備が0件の入力です。反映すると保存済みの装備がすべて0件に置き換わります。');
   if (items.some((i) => i.scope === 'ships' && i.after === 0)) warnings.push('艦娘が0件の入力です。反映すると保存済みの艦娘がすべて0件に置き換わります。');
   for (const r of preview.noChangeReasons) warnings.push(r);
+  for (const w of preview.parserWarnings) warnings.push(w.message);
   if (warnings.length === 0) return null;
   return (
     <ul className="import-warnings" aria-label="確認が必要な点">

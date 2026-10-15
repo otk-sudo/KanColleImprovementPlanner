@@ -3,7 +3,7 @@ import type { ImportKind } from '../domain/import/parse';
 import { projectInventory } from '../domain/inventory/projection';
 import { bucketKey, type ScopeKey, type ScopeUpdate } from '../domain/inventory/types';
 import { compareDate, isValidDate, type DateJst } from '../domain/jst';
-import type { Attempt, Delta, DraftResult, Goal, Holiday, Outcome, Protection, RecipeSnapshot, ResultEvent, ResultRevision, Settings } from '../domain/model';
+import { MAX_GOAL_COUNT, type Attempt, type Delta, type DraftResult, type Goal, type Holiday, type Outcome, type Protection, type RecipeSnapshot, type ResultEvent, type ResultRevision, type Settings } from '../domain/model';
 import { fixedHistoryOnlyScopes, happenedBefore, inferInputSources, scopesOfDeltas, validateCorrection, wouldGoNegative } from '../domain/results/results';
 import type { BackupData } from '../domain/backup';
 import type { Meta } from '../infrastructure/db';
@@ -66,7 +66,7 @@ export interface SaveGoalPayload {
 export function handleSaveGoal(data: AppData, p: SaveGoalPayload): HandlerResult<{ goalId: string }> {
   const g = p.goal;
   if (!Number.isInteger(g.targetStar) || g.targetStar < 0 || g.targetStar > 10) return fail('INVALID_TARGET_STAR', '目標改修値は★0〜★MAXで指定してください。');
-  if (!Number.isInteger(g.count) || g.count < 1) return fail('INVALID_COUNT', '完成品として残す個数は1以上の整数で指定してください。');
+  if (!Number.isInteger(g.count) || g.count < 1 || g.count > MAX_GOAL_COUNT) return fail('INVALID_COUNT', `完成品として残す個数は1〜${MAX_GOAL_COUNT}の整数で指定してください。`);
   if (g.guarantee.mode === 'fromTargetStar' && (g.guarantee.fromStar === null || g.guarantee.fromStar < 1 || g.guarantee.fromStar > 10)) return fail('INVALID_GUARANTEE', '確実化する段階を選んでください。');
   const others = data.goals.filter((x) => x.goalId !== g.goalId).sort((a, b) => a.priority - b.priority);
   const position = Math.max(1, Math.min(g.priority, others.length + 1));
@@ -194,6 +194,47 @@ export function recordOrderFor(data: Pick<AppData, 'resultEvents'>, attempt: Att
   return data.resultEvents.filter((e) => e.occurredDateJst === occurredDateJst).reduce((max, e) => Math.max(max, e.occurredOrder), 0) + 1;
 }
 
+/**
+ * 実施日時の順に、★別の装備の所持が途中で負にならないか（後の日付の成功だけが作った★を、それより前の日付で使わない）。
+ * 装備の基準に取り込み済みの実績は基準に含まれるので順番の対象外。所持が不明・装備を履歴だけに記録する場合は判定しない。
+ * baseAdjust は時刻によらず所持から外す増減（訂正で旧増減を戻す分）。
+ */
+function chronologyShortfall(data: AppData, others: ResultEvent[], deltas: Delta[], at: { date: DateJst; order: number }, baseAdjust: Delta[] = []): string[] {
+  const proj = projection(data);
+  if (!proj.equipment.known) return [];
+  const included = data.baselines.find((b) => b.scope === 'equipment')?.includedThroughSequence ?? 0;
+  const sumByBucket = (list: Delta[]) => {
+    const m = new Map<string, number>();
+    for (const d of list) if (d.scope === 'equipment') m.set(bucketKey(d.equipmentId, d.star), (m.get(bucketKey(d.equipmentId, d.star)) ?? 0) + d.amount);
+    return m;
+  };
+  const own = sumByBucket(deltas);
+  const consumed = [...own].filter(([, v]) => v < 0).map(([k]) => k);
+  if (consumed.length === 0) return [];
+  const adjust = sumByBucket(baseAdjust);
+  const later = others
+    .filter((e) => e.status === 'active' && e.originalSequence > included && !e.historyOnlyScopes.includes('equipment') && !happenedBefore({ date: e.occurredDateJst, order: e.occurredOrder }, at))
+    .sort((a, b) => compareDate(a.occurredDateJst, b.occurredDateJst) || a.occurredOrder - b.occurredOrder || a.originalSequence - b.originalSequence)
+    .map((e) => sumByBucket(e.deltas));
+  const out: string[] = [];
+  for (const k of consumed) {
+    const laterSum = later.reduce((n, m) => n + (m.get(k) ?? 0), 0);
+    let running = (proj.equipment.counts.get(k) ?? 0) + (adjust.get(k) ?? 0) - laterSum + own.get(k)!;
+    if (running < 0) {
+      out.push(k);
+      continue;
+    }
+    for (const m of later) {
+      running += m.get(k) ?? 0;
+      if (running < 0) {
+        out.push(k);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 function seqOf(a: Attempt): number {
   return Number(a.attemptId.slice(a.attemptId.lastIndexOf('@') + 1)) || 0;
 }
@@ -240,6 +281,10 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   if (negative.length > 0) return fail('NEGATIVE_INVENTORY', '記録すると所持数が負になる項目があります。未記録の入手がないか、所持データが最新か確認してください。', { scopes: negative });
 
   const occurredOrder = recordOrderFor(data, attempt, p.occurredDateJst);
+  if (!historyOnly.includes('equipment')) {
+    const short = chronologyShortfall(data, data.resultEvents, applied, { date: p.occurredDateJst, order: occurredOrder });
+    if (short.length > 0) return fail('BACKWARD_DEPENDENCY', 'この実施日の時点ではまだ持っていない装備を使う記録になります（後の日付の記録で作られた★です）。実施日を確認してください。', { buckets: short });
+  }
   // 入力元（前の工程の成功・素材の製作）は、この実施より前に起きたものだけ（日付が逆向きの依存を保存しない）
   for (const id of p.inputSourceEventIds) {
     const src = data.resultEvents.find((e) => e.eventId === id);
@@ -335,6 +380,10 @@ export function handleSaveDraft(data: AppData, p: SaveDraftPayload): HandlerResu
   if (compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には記録できません。');
   // 前の工程の結果が確定していない予定は、実施済みとして消費を確保しない（記録画面と同じく日付によらず止める）
   if (attempt.executionGate === 'predecessorPending') return fail('PREDECESSOR_PENDING', '前の工程の結果が確定していないため、この工程を実施済みとして保存できません。');
+  // 確認待ち（対象消失・条件不成立）の予定は、取り込み前の記録漏れとして装備を履歴だけに記録する場合だけ保存できる（結果の確定と同じ）
+  if (attempt.executionGate === 'reviewRequired' && p.scopeAnswers.equipment !== 'historyOnly') {
+    return fail('REVIEW_REQUIRED', 'この予定は所持データの更新などで確認待ちです。取り込み前に実施した場合は「記録漏れ」を選び、装備を履歴だけに記録してください。');
+  }
   const existing = data.drafts.find((d) => d.attemptId === p.attemptId && d.status === 'open');
   const draft: DraftResult = {
     draftId: existing?.draftId ?? p.draftId,
@@ -421,6 +470,10 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
   const forward = deltas.filter((d) => !historyOnly.includes(d.scope));
   const negative = wouldGoNegative(proj, [...reverse, ...forward]);
   if (negative.length > 0) return fail('NEGATIVE_INVENTORY', '訂正すると所持数が負になる項目があります。', { scopes: negative });
+  if (!historyOnly.includes('equipment')) {
+    const short = chronologyShortfall(data, others, forward, { date: p.occurredDateJst, order: occurredOrder }, reverse);
+    if (short.length > 0) return fail('BACKWARD_DEPENDENCY', 'この実施日の時点ではまだ持っていない装備を使う訂正になります（後の日付の記録で作られた★です）。実施日を確認してください。', { buckets: short });
+  }
   const prev: ResultRevision = { revision: e.revision, outcome: e.outcome, deltas: e.deltas, historyOnlyScopes: e.historyOnlyScopes, occurredDateJst: e.occurredDateJst, savedAt: e.recordedAt, reason: null };
   const corrected: ResultEvent = {
     ...e,
@@ -526,6 +579,12 @@ export function handleRestore(data: AppData, p: RestorePayload): HandlerResult<{
     },
     result: { datasetEpoch: p.newEpoch },
   };
+}
+
+/** 端末の時刻が戻ったことの警告を、利用者が確認した */
+export function handleAcknowledgeClockWarning(data: AppData): HandlerResult<null> {
+  if (data.meta.clockWarning === null) return { ok: true, writes: { noChange: true }, result: null };
+  return { ok: true, writes: { meta: { clockWarning: null } }, result: null };
 }
 
 export function handleApplyMaster(_data: AppData, p: { masterVersion: string }): HandlerResult<null> {

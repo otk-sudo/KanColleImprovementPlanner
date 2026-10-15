@@ -36,17 +36,25 @@ export class AppService {
 
   async init(): Promise<void> {
     await ensureInitialized(this.db, this.nowIso(), this.clock.nowMs());
-    const data = await loadData(this.db);
-    if (data.meta.activeMasterVersion === this.master.version) return;
-    const hasPlans = data.goals.length > 0 || data.attempts.length > 0;
-    await executeInternal(
-      this.db,
-      data.meta.revision,
-      () => ({
-        meta: hasPlans && data.meta.activeMasterVersion !== null ? { masterReviewRequired: true } : { activeMasterVersion: this.master.version, masterReviewRequired: data.meta.masterReviewRequired, planDirty: true },
-      }),
-      this.nowIso(),
-    );
+    // 同梱のマスターが変わったら、計画がある場合は計算保留にする。保存できないまま新しいマスターで計画を表示しない
+    for (let i = 0; i < 4; i++) {
+      const data = await loadData(this.db);
+      if (data.meta.activeMasterVersion === this.master.version) return;
+      const r = await executeInternal(
+        this.db,
+        data.meta.revision,
+        (fresh) => {
+          const hasPlans = fresh.goals.length > 0 || fresh.attempts.length > 0;
+          return {
+            meta: hasPlans && fresh.meta.activeMasterVersion !== null ? { masterReviewRequired: true } : { activeMasterVersion: this.master.version, masterReviewRequired: fresh.meta.masterReviewRequired, planDirty: true },
+          };
+        },
+        this.nowIso(),
+      );
+      if (r === 'APPLIED' || r === 'NO_CHANGE') return;
+      if (r === 'STORAGE_ERROR') throw new Error('共通マスターの更新に伴う計算保留を保存できませんでした。保存容量やブラウザの設定を確認してから再読み込みしてください。保存済みのデータは変更していません。');
+    }
+    throw new Error('共通マスターの更新に伴う計算保留を保存できませんでした（別のタブと同時に更新しています）。再読み込みしてください。');
   }
 
   load(): Promise<AppData> {

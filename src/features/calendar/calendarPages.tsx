@@ -9,9 +9,8 @@ import { UNPLACED_REASON_LABELS } from '../../domain/planning/types';
 import type { AppData } from '../../infrastructure/repository';
 import { newId } from '../../infrastructure/repository';
 import { costKeyLabel, costKeyPlain, costSummary, costSummaryTight, transitionLabel, transitionShort } from '../../ui/format';
-import { transitionOptions, type AttemptCost } from '../../domain/master';
 import { WelcomeContent } from '../onboarding/WelcomePage';
-import { buildDays, dayRequirements, emptyDay, KIND_LABEL, latestAttemptOf, monthCellSummary, type DayEntry, type DayInfo } from './calendarModel';
+import { buildDays, dayRequirements, emptyDay, entryCost, KIND_LABEL, latestAttemptOf, monthCellSummary, type DayEntry, type DayInfo } from './calendarModel';
 import './calendar.css';
 
 // カレンダー（S01 月・S02 週・S18 日付指定・S24 個別スキップ・S25 日全体スキップ・S30 前提待ち）。
@@ -161,13 +160,6 @@ function MonthCell({ info, selected, today, onSelect }: { info: DayInfo; selecte
   );
 }
 
-/** 予定の費用。保存済みの実績は記録時のレシピ（エントリ）から表示する */
-function entryCost(master: ReturnType<typeof useStore>['master'], e: DayEntry): AttemptCost | null {
-  if (e.placement?.cost) return e.placement.cost;
-  const opts = transitionOptions(master, e.transition);
-  const idx = e.event?.recipeSnapshot?.entryIndex ?? null;
-  return (opts.find((o) => o.entryIndex === idx) ?? opts[0])?.cost ?? null;
-}
 
 function helperLine(master: ReturnType<typeof useStore>['master'], e: DayEntry, projection: ReturnType<typeof useStore>['projection']): { text: string; ok: boolean } {
   const id = e.placement?.helperShipId ?? e.attempt?.helperShipId ?? null;

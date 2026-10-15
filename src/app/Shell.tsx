@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import { handleAcknowledgeClockWarning } from '../application/commands';
 import { useStore } from './store';
 
 export type NavKey = 'calendar' | 'goals' | 'materials' | 'inventory' | 'import' | 'history' | 'settings' | 'guide';
@@ -83,7 +84,7 @@ export function Shell({ nav, children }: { nav: NavKey; children: ReactNode }) {
 
 /** top：画面設計（1440×940）での本文の開始位置（px）。見出しとの間隔をそろえる */
 export function Page({ nav, title, sub, actions, children, docTitle, top = 190 }: { nav: NavKey; title: ReactNode; sub?: ReactNode; actions?: ReactNode; children: ReactNode; docTitle?: string; top?: number }) {
-  const { saveMessage, notice, setNotice } = useStore();
+  const { saveMessage, notice, setNotice, data, run, busy } = useStore();
   useEffect(() => {
     document.title = `${docTitle ?? (typeof title === 'string' ? title : '改修航路')} — 改修航路`;
   }, [title, docTitle]);
@@ -99,6 +100,15 @@ export function Page({ nav, title, sub, actions, children, docTitle, top = 190 }
       {saveMessage ? (
         <div className="banner banner-warn page-alert" role="alert">
           {saveMessage}
+        </div>
+      ) : null}
+      {data.meta.clockWarning ? (
+        // 時刻が戻ったまま記録すると想定と違う日本時間の日付になるため、確認するまで全画面に残す
+        <div className="banner banner-warn page-alert" role="alert">
+          {data.meta.clockWarning}現在の日付（日本時間）を確認してから記録してください。{' '}
+          <button type="button" className="link-button" disabled={busy} aria-label="時刻の警告を確認しました" onClick={() => void run('AcknowledgeClockWarning', handleAcknowledgeClockWarning, null)}>
+            確認しました
+          </button>
         </div>
       ) : null}
       {notice ? (
