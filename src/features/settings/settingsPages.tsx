@@ -80,7 +80,7 @@ export function SettingsPage() {
     download(backupFileName(now), exportBackup(data, data.meta.activeMasterVersion ?? master.version, __APP_VERSION__, now));
   };
   return (
-    <Page nav="settings" title="予定と保存の設定" top={196} sub="改修できる曜日・回数と、お休みの日を設定します。">
+    <Page nav="settings" title="予定と保存の設定" top={195} sub="改修できる曜日・回数と、お休みの日を設定します。">
       {message ? (
         <div className="banner banner-warn page-alert" role="alert">
           {message}

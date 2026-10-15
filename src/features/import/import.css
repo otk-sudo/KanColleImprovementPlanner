@@ -23,7 +23,7 @@
 }
 
 .import-paste-desc {
-  margin: 18px 0 20px;
+  margin: 18px 0 27px;
   font-size: 14px;
   line-height: 20px;
   color: var(--sub);
@@ -32,11 +32,11 @@
 .import-textarea {
   display: block;
   resize: none;
-  margin-top: 4px;
-  height: 204px;
-  padding: 18px 20px;
+  margin-top: 0;
+  height: 205px;
+  padding: 20px 20px 18px;
   font-size: 15px;
-  line-height: 22px;
+  line-height: 18px;
   background: var(--bg);
 }
 
@@ -54,7 +54,7 @@
 .import-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .import-actions-split {
@@ -65,7 +65,7 @@
 .import-after {
   margin-top: 25px;
   min-height: 170px;
-  padding: 16px 24px 24px;
+  padding: 15px 24px 24px;
 }
 
 .import-flow {
@@ -75,12 +75,12 @@
 }
 
 .import-after .import-note {
-  margin-top: 26px;
+  margin-top: 27px;
 }
 
 /* S08 */
 .import-drop-card {
-  padding: 24px;
+  padding: 24px 24px 26px;
 }
 
 .import-drop {
@@ -89,10 +89,28 @@
   height: 265px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* 参照は見出し・補足・ボタンを左寄せの一群として置く（ボタンだけ右へ字下げ） */
+  align-items: flex-start;
   justify-content: flex-start;
-  padding-top: 56px;
+  padding-top: 53px;
+  padding-left: 336px;
   border: 2px dashed transparent;
+}
+
+.import-drop-btn {
+  margin-left: 90px;
+}
+
+/* 狭い画面では一群を中央に寄せる */
+@media (max-width: 1279px) {
+  .import-drop {
+    align-items: center;
+    padding-left: 0;
+  }
+  .import-drop-sub,
+  .import-drop-btn {
+    margin-left: 0;
+  }
 }
 
 .import-drop.is-dragging {
@@ -106,7 +124,7 @@
 }
 
 .import-drop-sub {
-  margin: 17px 0 28px;
+  margin: 20px 0 31px 40px;
   font-size: 14px;
   line-height: 20px;
   color: var(--sub);
@@ -114,12 +132,12 @@
 
 .import-file-preview {
   margin-top: 24px;
-  padding: 16px 24px 24px;
+  padding: 15px 24px 24px;
   min-height: 290px;
 }
 
 .import-file-line {
-  margin: 18px 0 0;
+  margin: 19px 0 0;
   font-size: 16px;
   line-height: 24px;
   display: flex;
@@ -128,14 +146,18 @@
 }
 
 .import-file-values {
-  margin: 23px 0 0;
+  margin: 25px 0 0;
   font-size: 16px;
   line-height: 24px;
   white-space: pre-wrap;
 }
 
 .import-file-preview .import-note {
-  margin-top: 20px;
+  margin-top: 22px;
+}
+
+.import-file-preview .import-actions-split {
+  margin-top: 53px;
 }
 
 .import-warnings {
@@ -248,21 +270,21 @@
 .import-ok-banner {
   font-size: 18px;
   line-height: 26px;
-  padding: 22px 24px;
-  min-height: 72px;
+  padding: 18px 24px 27px;
+  min-height: 73px;
 }
 
 .import-scope-card {
-  margin-top: 24px;
-  padding: 16px 24px 24px;
-  min-height: 347px;
+  margin-top: 23px;
+  padding: 15px 24px 24px;
+  min-height: 349px;
 }
 
 .import-scope-grid {
   display: grid;
   grid-template-columns: 367px 367px 1fr;
   row-gap: 51px;
-  margin: 33px 0 0 3px;
+  margin: 34px 0 0 3px;
   font-size: 16px;
   line-height: 24px;
 }
@@ -273,7 +295,7 @@
 }
 
 .import-captured {
-  margin: 54px 0 0 2px;
+  margin: 55px 0 0 2px;
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
@@ -281,12 +303,12 @@
 
 .import-noadd {
   margin-top: 20px;
-  padding: 16px 24px 24px;
+  padding: 15px 24px 24px;
   min-height: 130px;
 }
 
 .import-noadd p {
-  margin: 12px 0 0 2px;
+  margin: 13px 0 0 2px;
   font-size: 15px;
   line-height: 22px;
   color: var(--sub);

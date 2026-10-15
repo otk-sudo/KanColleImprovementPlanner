@@ -25,7 +25,7 @@
 }
 
 .rec-label {
-  margin: 23px 0 0 4px;
+  margin: 26px 0 0 4px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -33,7 +33,7 @@
 .rec-outcomes {
   display: flex;
   gap: 12px;
-  margin: 15px 0 0 4px;
+  margin: 17px 0 0 4px;
   flex-wrap: wrap;
 }
 
@@ -58,19 +58,19 @@
 }
 
 .rec-sub {
-  margin: 18px 0 0 4px;
+  margin: 30px 0 0 4px;
   font-size: 18px;
   line-height: 26px;
   font-weight: 400;
 }
 
 .rec-rows {
-  margin: 18px 0 0 8px;
+  margin: 10px 0 0 8px;
 }
 
 .rec-row {
   display: grid;
-  grid-template-columns: 410px 250px;
+  grid-template-columns: 414px 250px;
   align-items: center;
   height: 61px;
 }
@@ -81,6 +81,8 @@
 }
 
 .rec-row-label {
+  /* 参照は名称が入力欄の中心より 2px 下・5px 右 */
+  padding: 4px 0 0 5px;
   font-size: 15px;
   display: flex;
   gap: 10px;
@@ -122,9 +124,9 @@
 }
 
 .rec-warn {
-  margin: 30px 0 0 4px;
-  padding: 16px 20px;
-  min-height: 86px;
+  margin: 43px 0 0 4px;
+  padding: 15px 20px 16px;
+  min-height: 87px;
 }
 
 .rec-warn-main {
@@ -142,7 +144,7 @@
 .rec-actions {
   display: flex;
   gap: 18px;
-  margin: 22px 0 0 4px;
+  margin: 20px 0 0 4px;
 }
 
 .rec-effect {

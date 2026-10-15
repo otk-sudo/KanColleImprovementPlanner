@@ -9,7 +9,7 @@ import { enumerateRoutes, parseRouteKey, transitionOptions, type MasterIndex } f
 import type { Goal, MaterialRouteChoice } from '../../domain/model';
 import type { PlanResult, PlanStep, UnplacedReason } from '../../domain/planning/types';
 import { UNPLACED_REASON_LABELS } from '../../domain/planning/types';
-import { EquipmentImage } from '../../ui/GameImage';
+import { EquipmentImage, IMAGES_ENABLED } from '../../ui/GameImage';
 import { SelectBox } from '../../ui/SelectBox';
 import { costKeyPlain, costSummaryTight, transitionLabel } from '../../ui/format';
 import { stageName } from '../inventory/inventoryModel';
@@ -104,6 +104,7 @@ export function GoalsPage() {
           })}
         </ol>
       )}
+      <p className="goals-image-note">{IMAGES_ENABLED ? '画像は設定された配信元から表示しています。' : '画像は配布条件の確認待ちのため表示していません。名称と状態で判定できます。'}</p>
     </Page>
   );
 }
@@ -288,7 +289,7 @@ export function GoalFormPage() {
               {form.matchMode === 'exact' ? '●' : '○'} 指定した★と一致
             </label>
           </fieldset>
-          <label className="field-label goal-field" htmlFor="guarantee">
+          <label className="field-label goal-field goal-field-guarantee" htmlFor="guarantee">
             確実化する段階
           </label>
           <SelectBox
@@ -321,7 +322,7 @@ export function GoalFormPage() {
               ) : null}
             </>
           ) : null}
-          <label className="field-label goal-field" htmlFor="priority">
+          <label className="field-label goal-field goal-field-priority" htmlFor="priority">
             優先順位
           </label>
           <SelectBox id="priority" width={300} value={String(form.priority)} options={priorities.map((p) => ({ value: String(p), label: `${p}${p === 1 ? '（最優先）' : p === priorities.length ? '（最後）' : ''}` }))} onChange={(v) => set({ priority: Number(v) })} />

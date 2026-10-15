@@ -1,6 +1,7 @@
 /* 改修目標 S03/S04/S19/S14 */
 .goals-add {
   width: 188px;
+  margin-top: 2px;
 }
 
 .page-actions {
@@ -10,7 +11,7 @@
 .goals-tabs {
   display: flex;
   gap: 12px;
-  margin-bottom: 26px;
+  margin-bottom: 25px;
 }
 
 .goals-empty {
@@ -36,7 +37,7 @@
 .goal-no {
   position: absolute;
   left: 24px;
-  top: 21px;
+  top: 20px;
   font-size: 20px;
   line-height: 28px;
   color: var(--sub);
@@ -51,7 +52,7 @@
 .goal-main {
   position: absolute;
   left: 156px;
-  top: 18px;
+  top: 17px;
   width: 260px;
 }
 
@@ -65,7 +66,7 @@
 }
 
 .goal-target {
-  margin: 15px 0 0;
+  margin: 16px 0 0;
   font-size: 14px;
   line-height: 20px;
 }
@@ -145,6 +146,14 @@
   width: 220px;
 }
 
+/* 参照では一覧の下、画面下部に画像表示の注記がある */
+.goals-image-note {
+  margin: 120px 0 0 26px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
 /* S04 */
 .goal-form-grid {
   display: grid;
@@ -163,21 +172,29 @@
 .goal-preview-card .card-title,
 .steps-card .card-title,
 .steps-cond .card-title,
-.steps-material .card-title,
-.unplaced-card .card-title {
+.steps-material .card-title {
   margin-left: -4px;
 }
 
 .goal-field-first {
-  margin-top: 21px;
+  margin-top: 22px;
 }
 
 .goal-field {
   margin-top: 24px;
 }
 
+.goal-field.goal-field-guarantee {
+  margin-top: 23px;
+}
+
+.goal-field.goal-field-priority {
+  margin-top: 26px;
+}
+
 .eq-picker {
   position: relative;
+  margin-top: 2px;
 }
 
 .eq-picker-box {
@@ -249,7 +266,7 @@
 .goal-form-row {
   display: flex;
   gap: 58px;
-  margin-top: 31px;
+  margin-top: 29px;
 }
 
 .goal-count {
@@ -261,7 +278,7 @@
 .goal-match {
   border: none;
   padding: 0;
-  margin: 25px 0 0;
+  margin: 23px 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0 18px;
@@ -300,7 +317,7 @@
 }
 
 .goal-form-note {
-  margin: 32px 0 0;
+  margin: 29px 0 0;
   font-size: 13px;
   line-height: 17px;
 }
@@ -322,20 +339,20 @@
 }
 
 .goal-preview-steps {
-  margin: 28px 0 0;
+  margin: 32px 0 0;
   font-size: 26px;
   line-height: 36px;
   color: var(--primary);
 }
 
 .goal-preview-helper {
-  margin: 17px 0 0;
+  margin: 18px 0 0;
   font-size: 13px;
   line-height: 17px;
 }
 
 .goal-preview-warn {
-  margin-top: 39px;
+  margin-top: 40px;
   min-height: 92px;
   padding: 16px 16px;
   font-size: 14px;
@@ -545,8 +562,8 @@
 /* S14 */
 .unplaced-card {
   min-height: 265px;
-  padding: 16px 24px 24px 20px;
-  margin-bottom: 22px;
+  padding: 15px 24px 24px 20px;
+  margin-bottom: 21px;
 }
 
 .unplaced-more {
@@ -559,8 +576,9 @@
   align-items: center;
   height: 33px;
   min-width: 166px;
-  margin: 21px 0 0 6px;
-  padding: 0 13px;
+  margin: 24px 0 0 6px;
+  /* 参照は文字が帯の中心より 4px 上 */
+  padding: 0 13px 8px;
   border-radius: 10px;
   background: var(--warn-bg);
   color: var(--warn);
@@ -568,24 +586,24 @@
 }
 
 .unplaced-detail {
-  margin: 22px 0 0 6px;
+  margin: 19px 0 0 6px;
   font-size: 16px;
   line-height: 24px;
 }
 
 .unplaced-hint {
-  margin: 17px 0 0 6px;
+  margin: 18px 0 0 6px;
   font-size: 14px;
   line-height: 20px;
 }
 
 .unplaced-actions {
-  margin: 21px 0 0 6px;
+  margin: 23px 0 0 6px;
   gap: 16px;
 }
 
 .unplaced-back {
-  margin-top: 36px;
+  margin-top: 37px;
 }
 
 @media (max-width: 1279px) {

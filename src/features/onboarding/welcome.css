@@ -9,13 +9,13 @@
 }
 
 .welcome-lead {
-  margin: 30px 0 0 2px;
+  margin: 28px 0 0 2px;
   font-size: 16px;
   line-height: 24px;
 }
 
 .welcome-actions {
-  margin: 39px 0 0 2px;
+  margin: 45px 0 0 2px;
   gap: 22px;
 }
 
@@ -32,7 +32,7 @@
   display: flex;
   flex-direction: column;
   min-height: 260px;
-  padding: 28px 24px 24px;
+  padding: 26px 24px 24px;
   text-decoration: none;
   color: var(--text);
 }
@@ -54,21 +54,21 @@
 }
 
 .welcome-step-sub {
-  margin-top: 22px;
+  margin-top: 23px;
   font-size: 14px;
   line-height: 20px;
   color: var(--sub);
 }
 
 .welcome-note {
-  margin: 55px 0 0 26px;
+  margin: 54px 0 0 26px;
   font-size: 15px;
   line-height: 22px;
   color: var(--sub);
 }
 
 .welcome-restore {
-  margin: 30px 0 0 26px;
+  margin: 31px 0 0 26px;
 }
 
 @media (max-width: 1100px) {

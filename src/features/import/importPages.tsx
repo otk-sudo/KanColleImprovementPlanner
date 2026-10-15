@@ -165,7 +165,7 @@ export function ImportFilePage() {
         >
           <p className="import-drop-title">ファイルをここへドロップ</p>
           <p className="import-drop-sub">または、保存先から選択</p>
-          <button type="button" className="btn btn-primary" style={{ width: 230 }} onClick={() => fileRef.current?.click()}>
+          <button type="button" className="btn btn-primary import-drop-btn" style={{ width: 230 }} onClick={() => fileRef.current?.click()}>
             ファイルを選ぶ
           </button>
           <input

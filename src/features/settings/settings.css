@@ -7,8 +7,8 @@
 
 .set-week,
 .set-holiday {
-  min-height: 339px;
-  padding: 16px 24px 24px 20px;
+  min-height: 340px;
+  padding: 15px 24px 24px 20px;
 }
 
 .set-week .card-title,
@@ -23,7 +23,7 @@
   display: grid;
   grid-template-columns: repeat(7, 83px);
   column-gap: 13px;
-  margin-top: 26px;
+  margin-top: 29px;
 }
 
 .set-week-label {
@@ -35,11 +35,11 @@
 
 .set-week-select {
   display: block;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .set-week-note {
-  margin: 36px 0 0 4px;
+  margin: 34px 0 0 4px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: 24px;
-  margin: 49px 0 0 4px;
+  margin: 51px 0 0 4px;
 }
 
 .set-search {
@@ -65,19 +65,19 @@
 
 .set-field-label {
   display: block;
-  margin: 31px 0 0 4px;
+  margin: 28px 0 0 4px;
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
 }
 
 .set-gap {
-  margin-top: 22px;
+  margin-top: 21px;
 }
 
 .set-date {
   display: block;
-  margin: 9px 0 0 4px;
+  margin: 10px 0 0 4px;
   width: 350px;
   max-width: calc(100% - 4px);
 }
@@ -95,13 +95,13 @@
 }
 
 .set-backup {
-  margin-top: 21px;
+  margin-top: 20px;
   min-height: 303px;
   padding: 16px 24px 24px 20px;
 }
 
 .set-backup-text {
-  margin: 21px 0 0 4px;
+  margin: 18px 0 0 4px;
   font-size: 15px;
   line-height: 22px;
 }
@@ -109,11 +109,11 @@
 .set-backup-actions {
   display: flex;
   gap: 22px;
-  margin: 36px 0 0 4px;
+  margin: 35px 0 0 4px;
 }
 
 .set-backup-note {
-  margin: 27px 0 0 4px;
+  margin: 25px 0 0 4px;
   font-size: 14px;
   line-height: 20px;
 }

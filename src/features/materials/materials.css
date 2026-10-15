@@ -65,9 +65,9 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--sub);
-  height: 44px;
+  height: 46px;
   vertical-align: top;
-  padding-top: 3px;
+  padding-top: 2px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -91,7 +91,7 @@
   line-height: 22px;
   height: 61px;
   vertical-align: top;
-  padding-top: 8px;
+  padding-top: 6px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -111,7 +111,7 @@
 }
 
 .mat-note {
-  margin: 36px 0 0 24px;
+  margin: 37px 0 0 24px;
   font-size: 13px;
   line-height: 18px;
 }
@@ -124,7 +124,7 @@
 
 .mat-steps {
   width: 240px;
-  margin-top: 25px;
+  margin-top: 26px;
 }
 
 @media (max-width: 1279px) {

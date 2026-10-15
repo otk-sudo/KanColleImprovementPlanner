@@ -486,7 +486,8 @@
   display: flex;
   align-items: center;
   height: 40px;
-  padding: 0 14px;
+  /* ボタンと同じく文字は中心より 3px 上 */
+  padding: 0 14px 6px;
   border-radius: var(--radius-button);
   background: var(--secondary);
   font-size: 13px;
@@ -501,6 +502,10 @@
 
 .day-step {
   width: 100px;
+}
+
+.day-step + .day-step {
+  margin-left: -2px;
 }
 
 .day-skip {

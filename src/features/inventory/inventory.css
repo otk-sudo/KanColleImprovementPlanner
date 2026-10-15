@@ -10,7 +10,7 @@
 }
 
 .inv-eq-card {
-  padding: 16px 24px 30px;
+  padding: 16px 24px 33px;
 }
 
 .inv-filter {
@@ -99,7 +99,7 @@
   position: relative;
   left: -80px;
   width: 260px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .inv-warning {
@@ -122,7 +122,7 @@
 .inv-helper-card,
 .inv-import-card {
   min-height: 186px;
-  padding: 16px 24px 24px;
+  padding: 15px 24px 24px;
 }
 
 .inv-helper-card .card-title,
@@ -134,7 +134,7 @@
 .inv-import-list {
   list-style: none;
   padding: 0;
-  margin: 15px 0 0;
+  margin: 18px 0 0;
   font-size: 14px;
   line-height: 17px;
 }
@@ -237,6 +237,12 @@
 
 .inv-ship-name {
   font-size: 16px;
+}
+
+/* 参照では艦娘画像が名称より 7px 下 */
+.inv-ship-cell .thumb {
+  position: relative;
+  top: 7px;
 }
 
 .inv-ship-note {

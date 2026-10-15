@@ -1,7 +1,7 @@
 /* 実績 S09/S29/S31 */
 .hist-banner {
   min-height: 94px;
-  padding: 18px 24px;
+  padding: 17px 24px 18px;
   margin-bottom: 25px;
 }
 
@@ -12,7 +12,7 @@
 }
 
 .hist-banner-sub {
-  margin: 11px 0 0;
+  margin: 15px 0 0;
   font-size: 13px;
   line-height: 18px;
   color: var(--muted);
@@ -29,7 +29,7 @@
 }
 
 .hist-list {
-  padding: 12px 24px 30px;
+  padding: 7px 24px 30px;
   min-height: 360px;
 }
 
@@ -44,6 +44,14 @@
   grid-template-columns: 248px 440px 200px 1fr;
   align-items: center;
   min-height: 77px;
+}
+
+/* 参照は各行の文字がボタンの中心より 4px 上 */
+.hist-date,
+.hist-label,
+.hist-status {
+  position: relative;
+  top: -4px;
 }
 
 .hist-date {
@@ -90,11 +98,11 @@
 .hist-info {
   margin-top: 25px;
   min-height: 123px;
-  padding: 16px 24px;
+  padding: 15px 24px 16px 20px;
 }
 
 .hist-info-text {
-  margin: 12px 0 0 4px;
+  margin: 13px 0 0 4px;
   font-size: 13px;
   line-height: 18px;
 }
