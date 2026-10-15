@@ -1,6 +1,26 @@
 # 技術選定案（2026-10-14）
 
-状態：GitHub Pages公開はユーザー合意済み。以下の言語・ライブラリは推奨案で、導入・互換性検証は未実施。製造はClaude担当。
+状態：GitHub Pages公開はユーザー合意済み。以下の「推奨構成」は選定時の案。実装で確定した構成は次の「採用結果」を正とする。製造はClaude担当。
+
+## 採用結果（2026-10-15、実装で確定）
+
+版は package.json / package-lock.json で固定。Node は 22 LTS（`.nvmrc`、engines `>=22.12.0`）。typecheck・lint・単体・E2E・build はこの組合せで実行済み（結果は implementation-status.md）。
+
+| 領域 | 採用 | 推奨案との違いと理由 |
+| --- | --- | --- |
+| 言語 | TypeScript 6.0（strict、noUncheckedIndexedAccess） | 推奨どおり |
+| 画面 | React 19.3 | 推奨どおり |
+| 開発・ビルド | Vite 8.3（base `./`） | 推奨どおり。公開サブパスに依存しない相対パス |
+| UI部品 | **自前のCSS（MUIは不採用）** | 画面設計 S01〜S34 を 1440×940 で画素単位に再現するため。MUI の既定余白・文字組を打ち消す量が多く、比較で差が残る |
+| カレンダー | **自前の月・週・日表示（FullCalendarは不採用）** | 設計の月セル（95px・間隔3px）・週列（154px）・日別詳細の文言配置を再現するため。日付計算は domain/jst.ts の純粋関数で行い、表示部品に計算を委ねない方針は維持 |
+| 保存 | IndexedDB＋Dexie 4.4（dexie-react-hooks は不採用） | 画面の状態は StoreProvider が DB から読み直す方式に統一し、フック経由の部分購読を使わない |
+| 入力検証 | Zod 4.6 | 推奨どおり（マスター・バックアップ・目録の検証） |
+| 日付 | **自前の日本時間ユーティリティ（Day.jsは不採用）** | 日本時間は夏時間のない固定 UTC+9。OS のタイムゾーン設定に依存せず、境界（UTC 14:59/15:00）を単体テストで固定できる |
+| 画面遷移 | React Router 7.18 の HashRouter | 推奨どおり |
+| 計算 | UI/DB に依存しない TypeScript 関数（src/domain） | 推奨どおり |
+| テスト | Vitest 5.0（fake-indexeddb 併用）＋Playwright 1.64 | 推奨どおり。画面比較は pixelmatch/pngjs のローカル専用スクリプト |
+| 文字 | @fontsource/noto-sans-jp 5.3（400/500、SIL OFL 1.1） | 画面設計の書体。外部フォント配信へ接続しないよう同梱 |
+| 公開 | GitHub Pages（未設定・未公開） | CI（PR 検証）だけを追加。公開ワークフローはマスター出典の配布条件確認後に追加する（docs/release.md） |
 
 ## 推奨構成
 
@@ -48,7 +68,7 @@
 - FullCalendarは標準版の同一互換系列で揃える。公式ドキュメントの版とインストール版でimport/APIを照合。
 - 公開サイト構築前にtypecheck、build、test、test:e2e等のコマンドを定義し、実行した結果だけ記録。
 - CIはPRで型・ビルド・必要テスト、公開は最初は手動起動のActions案。mainへのmergeが常に公開を意味する運用にはまだしない。
-- この文書は技術選定案。実装・依存インストール・Actions設定・公開は今回行わない。
+- （2026-10-15追記）依存の導入・版の固定・CI（.github/workflows/ci.yml）は実装時に実施済み。公開ワークフロー・Pages 設定・公開は未実施。
 
 ## 公式資料（2026-10-14閲覧）
 - Vite/Pages：https://vite.dev/guide/static-deploy.html

@@ -30,7 +30,7 @@ CreationLogの現行CLAUDE.md/AGENTS.md/docs/development-workflow.mdを2026-10-1
 - --auto、--admin、force push、保護の迂回を使わない。破壊的操作・ブランチ削除を通常フローに含めない。
 - CreationLog限定の追加確認不要マージ許可は未継承。本プロジェクトの許可がなければマージ準備完了の報告まで。
 - merge/ビルド成功/無指摘と、ブラウザ実機検証・製品完成・公開を区別。
-- mainにはPR必須・会話解消必須・管理者にも適用・強制push/削除禁止を設定済み。CIと必須ステータスチェックは未設定。GitHubの承認人数は0で、Codexの最新SHAレビューとユーザーのマージ許可は別途運用で確認する。
+- mainにはPR必須・会話解消必須・管理者にも適用・強制push/削除禁止を設定済み。CI（.github/workflows/ci.yml）はPRで実行するが、必須ステータスチェックへの登録は未設定（2026-10-15）。GitHubの承認人数は0で、Codexの最新SHAレビューとユーザーのマージ許可は別途運用で確認する。
 
 ## 2026-10-14 公開リポジトリの初回push
 ユーザーがotk-sudo/KanColleImprovementPlannerの公開作成とpushを承認。originは同URLに設定済み。公開用docs/public-designは、個人所持集計を含む旧ローカル履歴を親に持たない新規ルートから開始する。旧main/feature/implementationはローカル保存用であり、そのままpush・mergeしない。公開後の作業は公開ブランチを起点にする。mainへの直接push・マージ許可は今回含まれない。
@@ -40,4 +40,4 @@ CreationLogの現行CLAUDE.md/AGENTS.md/docs/development-workflow.mdを2026-10-1
 - カレントとpush先はfeature/implementation。PRのbaseはmain。通常のgit pushはこの作業ブランチへ送る。
 - 旧ローカルmainとfeature/implementationはarchive/local-only-mainとarchive/local-only-implementationへ改名して保存。これらは個人集計を含む旧履歴であり、push/merge/公開ブランチへの取り込み禁止。git push --all/--mirrorは使用しない。
 - docs/public-designは公開設計時点のブランチとして保持。今後の実装は新しいfeature/implementationで行う。
-- PR統合はsquashのみ。自動マージ・保護回避は使わない。Codexレビューの自動起動・CIは今回未設定。
+- PR統合はsquashのみ。自動マージ・保護回避は使わない。Codexレビューの自動起動は未設定。CIは2026-10-15にPR検証用を追加（公開ワークフローは未作成、docs/release.md）。
