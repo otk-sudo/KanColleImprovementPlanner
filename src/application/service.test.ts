@@ -739,6 +739,19 @@ describe('レビュー指摘（PR #1）', () => {
     expect(projectInventory(d.baselines, d.resultEvents, []).resources.get(8)?.value).toBe((before ?? 0) - 2);
   });
 
+  it('スキップを実施した結果へ訂正するときは、実施時のレシピを記録する（入力元の推定にも使える）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const d0 = await s.load();
+    const a = d0.attempts.find((x) => x.scheduledDate === s.today())!;
+    const skip: ResultEvent = { eventId: 'es', attemptId: a.attemptId, stepKey: a.stepKey, goalId: 'g1', originalSequence: 1, revision: 1, status: 'active', outcome: 'skip', occurredDateJst: s.today(), occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: [], history: [] };
+    const data = { ...d0, meta: { ...d0.meta, nextSequence: 2 }, resultEvents: [skip], attempts: d0.attempts.map((x) => (x.attemptId === a.attemptId ? { ...x, outcome: 'skip' as const, resultEventId: 'es' } : x)) };
+    const snapshot = { masterVersion: m.version, transition: a.transition, fromName: '主砲A', toName: '主砲A', mode: 'normal' as const, entryIndex: 0, plannedCost: null, helperShipId: null, helperShipName: null };
+    const success = buildDeltas({ transition: a.transition, outcome: 'success', consumption: { resources: { 8: 3, 7: 4 }, equipment: [{ equipmentId: FX.materialA, star: 0, count: 2 }], useItems: {} } });
+    const r = handleCorrectResult(data, { eventId: 'es', newOutcome: 'success', newDeltas: success, occurredDateJst: s.today(), historyOnlyScopes: [], reason: '', today: s.today(), now: '', recipeSnapshot: snapshot });
+    expect(r.ok && r.writes.put?.resultEvents?.[0]?.recipeSnapshot).toEqual(snapshot);
+  });
+
   it('一日分のスキップの1件を訂正しても、ほかのスキップが残っていればその日の目印を消さない', async () => {
     const s = await service();
     await seedPlan(s);

@@ -23,6 +23,8 @@ export interface EquipmentProjection {
   importedAt: string | null;
   sourceCapturedAt: string | null;
   snapshotId: string | null;
+  /** 装備の基準（取り込み）に反映済みの確認待ちの下書き */
+  includedDraftIds: string[];
 }
 
 export interface ShipProjection {
@@ -140,6 +142,7 @@ export function projectInventory(baselines: Baseline[], events: ResultEvent[], d
       importedAt: eqBase?.importedAt ?? null,
       sourceCapturedAt: eqBase?.sourceCapturedAt ?? null,
       snapshotId: eqBase?.snapshotId ?? null,
+      includedDraftIds: eqBase?.includedDraftIds ?? [],
     },
     ships: {
       known: !!shipBase?.ships,

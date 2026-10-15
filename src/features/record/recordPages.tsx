@@ -175,7 +175,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
-      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: new Date().toISOString() }, { commandId, base: form.base });
+      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: new Date().toISOString(), recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, { commandId, base: form.base });
       if (!r.ok) {
         rebase(r);
         const deps = (r.errors[0]?.details as { dependents?: { eventId: string }[] } | undefined)?.dependents ?? [];

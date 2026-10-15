@@ -21,6 +21,8 @@ export function computeRollover(attempts: Attempt[], today: DateJst, nowIso = ''
   const countByStep = new Map<string, number>();
   for (const a of attempts) {
     countByStep.set(a.stepKey, Math.max(countByStep.get(a.stepKey) ?? 0, seqOf(a)));
+    // 最新の試行は、取り消された試行（訂正で不要になった再挑戦など）を飛ばして選ぶ
+    if (a.lifecycle === 'cancelled') continue;
     const cur = latestByStep.get(a.stepKey);
     if (!cur || seqOf(a) > seqOf(cur)) latestByStep.set(a.stepKey, a);
   }

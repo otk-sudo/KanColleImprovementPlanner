@@ -23,6 +23,16 @@ describe('日本時間の翌日処理', () => {
     ]);
   });
 
+  it('取り消した試行の後ろで未実施に戻った試行も、最新の試行として引き継ぐ', () => {
+    const attempts = [
+      attempt({ attemptId: 'a|1@1', stepKey: 'a|1', goalId: 'g', transition: t, scheduledDate: '2026-10-13', outcome: 'none' }),
+      attempt({ attemptId: 'a|1@2', stepKey: 'a|1', goalId: 'g', transition: t, scheduledDate: '2026-10-13', outcome: 'none', lifecycle: 'cancelled' }),
+    ];
+    const r = computeRollover(attempts, '2026-10-14');
+    expect(r.superseded.map((a) => a.attemptId)).toEqual(['a|1@1']);
+    expect(r.successors.map((a) => a.attemptId)).toEqual(['a|1@3']);
+  });
+
   it('削除した目標の試行（スキップの結果を含む）は引き継がない', () => {
     const attempts = [
       attempt({ attemptId: 'a|1@1', stepKey: 'a|1', goalId: 'deleted', transition: t, scheduledDate: '2026-10-13', outcome: 'skip' }),

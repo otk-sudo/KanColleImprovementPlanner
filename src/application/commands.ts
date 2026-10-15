@@ -477,6 +477,8 @@ export interface CorrectPayload {
   reason: string;
   today: DateJst;
   now: string;
+  /** 記録にレシピがない（スキップの記録など）ときに、実施した結果へ訂正する場合の実施時のレシピ */
+  recipeSnapshot?: RecipeSnapshot | null;
 }
 export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerResult<{ revision: number }> {
   const e = data.resultEvents.find((x) => x.eventId === p.eventId);
@@ -539,6 +541,8 @@ export function handleCorrectResult(data: AppData, p: CorrectPayload): HandlerRe
     occurredOrder,
     inputSourceEventIds,
     historyOnlyScopes: historyOnly,
+    // スキップから実施した結果へ訂正したら、実施時のレシピを記録する（後の表示と入力元の推定に使う）
+    recipeSnapshot: e.recipeSnapshot ?? (p.newOutcome === 'success' || p.newOutcome === 'failure' ? (p.recipeSnapshot ?? null) : null),
     recordedAt: p.now,
     history: [...e.history, { ...prev, reason: p.reason || null }],
   };

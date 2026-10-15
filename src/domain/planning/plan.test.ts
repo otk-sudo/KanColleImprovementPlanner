@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FX, fixtureMaster, stage } from '../../test-support/fixtureMaster';
-import { attempt, goal, planInput } from '../../test-support/planFixtures';
+import { attempt, baselinesFrom, goal, planInput } from '../../test-support/planFixtures';
+import { projectInventory } from '../inventory/projection';
 import type { MasterFile } from '../master/schema';
 import type { DraftResult, ResultEvent } from '../model';
 import { buildPlan, COMPUTATION_LIMITS } from './plan';
@@ -369,6 +370,23 @@ describe('レビュー指摘（PR #1）', () => {
     expect(plan.unplaced.find((p) => p.goalId === 'h')?.reasons).toEqual(['TARGET_MISSING']);
   });
 
+  it('取り込み済みの成功の下書きは、同じ★を確保している別の下書きの改修対象を横取りしない', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g1 = goal({ goalId: 'g1', equipmentId: 1, targetStar: 1, count: 1, priority: 1 });
+    const g2 = goal({ goalId: 'g2', equipmentId: 1, targetStar: 2, count: 1, priority: 2 });
+    const a1 = attempt({ attemptId: 'g1|1:0>1|0@1', stepKey: 'g1|1:0>1|0', goalId: 'g1', transition: t01, scheduledDate: '2026-10-13', outcome: 'draft' });
+    const a2 = attempt({ attemptId: 'g2|1:0>1|0@1', stepKey: 'g2|1:0>1|0', goalId: 'g2', transition: t01, scheduledDate: '2026-10-14', outcome: 'draft' });
+    const hold = [{ scope: 'equipment' as const, equipmentId: 1, star: 0, amount: -1 }];
+    const d1 = draftOf(a1.attemptId, a1.stepKey, 'success', hold); // 取り込みで既に反映済み
+    const d2 = draftOf(a2.attemptId, a2.stepKey, 'success', hold);
+    const input = planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1], [1, 1, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g1, g2], attempts: [a1, a2], drafts: [d1, d2] });
+    const baselines = baselinesFrom({ equipment: [[1, 0, 1], [1, 1, 1]], ships: [101], resources: { 8: 99, 7: 99 } }).map((b) => (b.scope === 'equipment' ? { ...b, includedDraftIds: [d1.draftId] } : b));
+    const plan = buildPlan({ ...input, inventory: projectInventory(baselines, [], [d1, d2]) });
+    // 確保した★0 は d2（目標 g2）の改修対象。g1 は★1 の完成品で達成済み
+    expect(plan.steps.find((s) => s.stepKey === a2.stepKey)?.blockers).toContain('RESULT_PENDING');
+    expect(plan.steps.some((s) => s.goalId === 'g1')).toBe(false);
+  });
+
   it('工程数が計算の上限に達したら、それ以上の改修対象の工程を展開せず、残りを計算上限として未配置にする', () => {
     // ★0 を 1,100 個所持し ★10 を 1,100 個目指す（10 工程 × 1,100 = 11,000 工程 > 上限 10,000）
     const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 10, count: 1100 });
@@ -411,6 +429,18 @@ describe('レビュー指摘（PR #1）', () => {
     const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [failed, cancelledRetry] }));
     expect(plan.steps.map((s) => s.stepKey)).toEqual(['g|1:0>1|0']);
     expect(plan.placements.find((p) => p.stepKey === 'g|1:0>1|0')?.attemptId).toBe('g|1:0>1|0@3');
+  });
+
+  it('取り消した再挑戦の後ろで未実施に戻った試行を、最新の試行として今日の予定に使う（新しい試行を作らない）', () => {
+    const t01 = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    const g = goal({ goalId: 'g', equipmentId: 1, targetStar: 1, count: 1 });
+    // 失敗 → 再挑戦 → 成功へ訂正（再挑戦は取消）→ 未実施へ訂正
+    const reopened = attempt({ attemptId: 'g|1:0>1|0@1', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', helperShipId: 101 });
+    const cancelledRetry = attempt({ attemptId: 'g|1:0>1|0@2', stepKey: 'g|1:0>1|0', goalId: 'g', transition: t01, scheduledDate: '2026-10-14', dayOrder: 2, lifecycle: 'cancelled' });
+    const plan = buildPlan(planInput({ master: simpleMaster(), inventory: { equipment: [[1, 0, 1]], ships: [101], resources: { 8: 99, 7: 99 } }, goals: [g], attempts: [reopened, cancelledRetry] }));
+    const p = plan.placements.find((x) => x.stepKey === 'g|1:0>1|0')!;
+    expect([p.attemptId, p.date, p.executionGate]).toEqual(['g|1:0>1|0@1', '2026-10-14', 'ready']);
+    expect(plan.attemptChanges.create).toEqual([]);
   });
 
   it('取り消した再挑戦の後ろの今日の失敗も、翌日へ送る（同日の再挑戦は利用者の操作でだけ追加する）', () => {

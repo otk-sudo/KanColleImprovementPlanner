@@ -339,7 +339,16 @@ export function ProtectionPage() {
       snapshotId: snapshotAtOpen,
       now: new Date().toISOString(),
     }, { commandId });
-    if (!r.ok) return setMessage(r.message);
+    if (!r.ok) {
+      // 別のタブなどの変更と競合したら、最新の保護設定に読み直してから確認してもらう（古い値で上書きしない）
+      if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') {
+        const latest = r.latest.protections.find((p) => p.bucket === bucket);
+        const ids = latest?.instanceIds?.filter((id) => instances.some((i) => i.instanceId === id)) ?? [];
+        setSelected(ids);
+        setCount(useInstances ? ids.length : (latest?.count ?? 0));
+      }
+      return setMessage(r.message);
+    }
     navigate('/inventory/equipment');
   };
   return (

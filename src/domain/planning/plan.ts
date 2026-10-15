@@ -193,6 +193,8 @@ export function buildPlan(input: PlanInput): PlanResult {
   const reservedCount = new Map<string, number>();
   for (const d of input.drafts) {
     if (d.status !== 'open' || d.reportedOutcome !== 'success') continue;
+    // 装備の基準に取り込み済み、または装備を「履歴だけ」と答えた下書きは、改修対象を確保していない
+    if (inv.equipment.includedDraftIds.includes(d.draftId) || d.scopeAnswers.equipment === 'historyOnly') continue;
     const a = input.attempts.find((x) => x.attemptId === d.attemptId);
     if (!a) continue;
     const from = transitionFrom(a.transition);
@@ -389,7 +391,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     attemptsByKey.set(a.stepKey, list);
   }
   for (const list of attemptsByKey.values()) list.sort((a, b) => attemptSeq(a) - attemptSeq(b));
-  const latestOf = (key: string): Attempt | undefined => attemptsByKey.get(key)?.at(-1);
+  // 工程の最新の試行。取り消された試行（訂正で不要になった再挑戦など）は飛ばす
+  const latestOf = (key: string): Attempt | undefined => [...(attemptsByKey.get(key) ?? [])].reverse().find((a) => a.lifecycle !== 'cancelled');
   const isClaim = (a: Attempt): boolean => (a.lifecycle === 'active' && (a.outcome === 'none' || a.outcome === 'draft' || a.outcome === 'skip')) || a.outcome === 'failure';
 
   const groups = new Map<string, { chain: Chain; index: number }[]>();
@@ -408,13 +411,13 @@ export function buildPlan(input: PlanInput): PlanResult {
     const prefix = `${gid}|`;
     const used = new Set<number>();
     const claims: { ordinal: number; date: DateJst | null; order: number }[] = [];
-    for (const [key, list] of attemptsByKey) {
+    for (const key of attemptsByKey.keys()) {
       if (!key.startsWith(prefix)) continue;
       const ordinal = Number(key.slice(prefix.length));
       if (!Number.isInteger(ordinal)) continue;
       used.add(ordinal);
       // 取り消された試行（訂正で不要になった再挑戦など）は飛ばし、その前の試行で番号を保つ
-      const latest = [...list].reverse().find((a) => a.lifecycle !== 'cancelled');
+      const latest = latestOf(key);
       if (latest && isClaim(latest)) claims.push({ ordinal, date: latest.scheduledDate, order: latest.dayOrder });
     }
     claims.sort((a, b) => (a.date === b.date ? 0 : a.date === null ? 1 : b.date === null ? -1 : compareDate(a.date, b.date)) || a.order - b.order || a.ordinal - b.ordinal);
@@ -456,8 +459,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       // 確認待ちの結果がある工程は、繰越後の後継があっても結果が決まるまで実行しない（元の試行が成功なら後継は不要になる）
       if ((attemptsByKey.get(stepKey) ?? []).some((a) => a.outcome === 'draft' && a.lifecycle !== 'cancelled')) blockers.unshift('RESULT_PENDING');
       // 今日実施した失敗・スキップの工程は翌日以降（実施日で判断し、別の日に実施した記録は今日から再挑戦できる）
-      // 取り消された試行（訂正で不要になった再挑戦など）は飛ばして判断する
-      const lastLive = [...(attemptsByKey.get(stepKey) ?? [])].reverse().find((a) => a.lifecycle !== 'cancelled');
+      // 取り消された試行（訂正で不要になった再挑戦など）は飛ばして判断する（latestOf）
+      const lastLive = latestOf(stepKey);
       if (lastLive && (lastLive.outcome === 'failure' || lastLive.outcome === 'skip') && (occurrence(lastLive)?.date ?? lastLive.scheduledDate) === today) earliestDate = tomorrow;
       steps.push({
         stepKey,

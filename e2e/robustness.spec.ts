@@ -97,6 +97,29 @@ test('A10：設定の保存が別のタブの変更と競合したら、入力�
   expect((await state(b)).settings.searchDays).toBe(90);
 });
 
+test('A10：保護数の保存が別のタブの変更と競合したら、最新の保護設定に読み直す（古い値で上書きしない）', async ({ context }) => {
+  const withEq: BackupSpec = { ...seed, baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 6, 3]])] };
+  const route = `/inventory/protection/${ID.mainGunA}:6`;
+  const a = await context.newPage();
+  await start(a, { data: withEq, route });
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await b.goto(`/#${route}`);
+  await expect(b.getByRole('button', { name: '保護0個に変更' })).toBeVisible();
+  await a.getByRole('button', { name: '1個増やす' }).click();
+  await a.getByRole('button', { name: '1個増やす' }).click();
+  await a.getByRole('button', { name: '保護2個に変更' }).click();
+  await a.waitForURL(/#\/inventory\/equipment/);
+  await expect.poll(async () => (await state(b)).meta.revision).toBe((await state(a)).meta.revision);
+  // B は開いた時点の値（0個）から 1個にして保存しようとする → 競合し、最新（2個）に読み直す
+  await b.getByRole('button', { name: '1個増やす' }).click();
+  await b.getByRole('button', { name: '保護1個に変更' }).click();
+  await expect(b.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  await expect(b.getByRole('button', { name: '保護2個に変更' })).toBeVisible();
+  expect((await state(b)).protections.find((x) => x.bucket === `${ID.mainGunA}:6`)?.count).toBe(2);
+});
+
 test('A10：別のタブで削除した目標を、先に開いていた編集フォームから復活させない', async ({ context }) => {
   const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: 1001, targetStar: 6, count: 1 })] };
   const a = await context.newPage();
@@ -227,6 +250,31 @@ test('A10：復元後の日付変更の処理を保存できなければ、完�
   await page.getByRole('button', { name: '日付変更の処理を再試行' }).click();
   await page.waitForURL(/#\/calendar/);
   await expect(page.getByText('バックアップを復元しました。')).toBeVisible();
+});
+
+test('A10：復元前の保存の後に別のタブで変更されたら、復元せずに復元前の保存をやり直させる', async ({ context }) => {
+  const a = await context.newPage();
+  await start(a, { data: seed, route: '/settings' });
+  const download = a.waitForEvent('download');
+  await a.getByRole('button', { name: 'バックアップを書き出す' }).click();
+  const json = readFileSync(await (await download).path(), 'utf8');
+  await a.locator('input[type=file]').setInputFiles({ name: 'kaishu-backup.json', mimeType: 'application/json', buffer: Buffer.from(json, 'utf8') });
+  await a.waitForURL(/#\/settings\/restore$/);
+  const pre = a.waitForEvent('download');
+  await a.getByRole('button', { name: '復元前の保存へ進む' }).click();
+  await pre;
+  // 別のタブで所持データを変更する（A の復元前の保存には含まれない）
+  const b = await context.newPage();
+  await serveFixtureMaster(b, screenMaster());
+  await fixClock(b);
+  await pasteAndApply(b, material(77));
+  await expect.poll(async () => (await state(a)).meta.revision).toBe((await state(b)).meta.revision);
+  await a.getByRole('button', { name: 'この内容で復元する' }).click();
+  await expect(a.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  // 復元前の保存をやり直すまで復元できない
+  await expect(a.getByRole('button', { name: 'この内容で復元する' })).toHaveCount(0);
+  await expect(a.getByRole('button', { name: '復元前の保存へ進む' })).toBeVisible();
+  expect((await state(a)).baselines.find((x) => x.scope === 'resource:8')?.value).toBe(77);
 });
 
 test('A10：壊れたバックアップは部分的にも復元せず、現在のデータを保つ', async ({ page }) => {
