@@ -444,7 +444,7 @@ export function DayPage() {
                 ) : short ? (
                   <div className="banner banner-warn day-entry-warn">仮配置：{short.replace('しています', '')}。当日は予定を保持し、翌日に未実施を判定します。</div>
                 ) : null}
-                {e.kind === 'failure' && isToday ? (
+                {e.kind === 'failure' && isToday && !info.daySkipped ? (
                   <button type="button" className="link-button day-retry" disabled={busy} onClick={() => void retry(e.stepKey)}>
                     同日に再挑戦する（上限内で追加）
                   </button>

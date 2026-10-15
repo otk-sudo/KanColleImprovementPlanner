@@ -9,6 +9,7 @@ import { formatJstDateTime, formatSlashDate, isValidDate, WEEKDAY_LABELS } from 
 import { transitionOptions } from '../../domain/master';
 import { newId } from '../../infrastructure/repository';
 import { DateBox, SelectBox } from '../../ui/SelectBox';
+import { settingsSavedMessage } from './settingsModel';
 import './settings.css';
 
 // 予定と保存の設定（S10）・バックアップの復元（S21）・マスター不足の復元（S32）。design/10・14。
@@ -57,14 +58,14 @@ export function SettingsPage() {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [message, setMessage] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
   const picker = useBackupPicker();
   const settingsId = useCommandId(limits, searchDays);
   const holidayId = useCommandId(start, end);
   const save = async () => {
     const r = await run('SaveSettings', handleSaveSettings, { weekdayLimits: limits, searchDays }, { commandId: settingsId });
     setMessage(r.ok ? null : r.message);
-    setSaved(r.ok ? '設定を保存しました。将来の予定を再計算しました。' : null);
+    setSaved(r.ok ? settingsSavedMessage(r.recalc) : null);
   };
   const addHoliday = async () => {
     if (!isValidDate(start) || !isValidDate(end)) return setMessage('開始日と終了日を入力してください。');
@@ -87,8 +88,8 @@ export function SettingsPage() {
         </div>
       ) : null}
       {saved ? (
-        <div className="banner banner-ok page-alert" role="status">
-          {saved}
+        <div className={`banner ${saved.ok ? 'banner-ok' : 'banner-warn'} page-alert`} role="status">
+          {saved.text}
         </div>
       ) : null}
       <div className="set-top">

@@ -257,6 +257,11 @@ export function handleRecordResult(data: AppData, p: RecordResultPayload): Handl
   const attempt = data.attempts.find((a) => a.attemptId === p.attemptId);
   if (!attempt) return fail('ATTEMPT_NOT_FOUND', '対象の予定が見つかりません。別のタブで変更された可能性があります。');
   if (attempt.outcome !== 'none' && attempt.outcome !== 'draft') return fail('ALREADY_RECORDED', 'この予定には既に結果が記録されています。変更する場合は「実績・繰り越し」から記録を修正してください。');
+  // 確認待ちの下書きがある予定は、その下書きの確定としてだけ記録する（下書きを開いたまま結果を保存して二重に確保しない）
+  const openDraft = data.drafts.find((d) => d.attemptId === attempt.attemptId && d.status === 'open');
+  if ((openDraft || p.fromDraftId !== null) && p.fromDraftId !== (openDraft?.draftId ?? null)) {
+    return fail('DRAFT_OPEN', 'この予定には「実施済み・確認待ち」の記録があります。「実績・繰り越し」の確認待ちから再開して確定してください。');
+  }
   if (attempt.lifecycle === 'cancelled') return fail('ATTEMPT_CANCELLED', '取り消された予定には記録できません。');
   if (!isValidDate(p.occurredDateJst) || compareDate(p.occurredDateJst, p.today) > 0) return fail('FUTURE_DATE', '未来の日付には結果を記録できません。ゲームで実施した日を選んでください。');
   if (p.outcome === 'skip' && (attempt.scheduledDate !== p.today || p.occurredDateJst !== p.today)) return fail('SKIP_NOT_TODAY', 'スキップは当日の未実施の予定だけに記録できます。');
@@ -526,6 +531,8 @@ export function handleSameDayRetry(data: AppData, p: { stepKey: string; attemptI
   const list = data.attempts.filter((a) => a.stepKey === p.stepKey).sort((a, b) => seqOf(a) - seqOf(b));
   const latest = list.at(-1);
   if (!latest || latest.outcome !== 'failure' || latest.scheduledDate !== p.today) return fail('NOT_FAILED_TODAY', '同日の再挑戦は、今日失敗した工程にだけ追加できます。');
+  // 一日分をスキップした日には、新しい予定（再挑戦）を追加しない
+  if (data.daySkips.some((d) => d.date === p.today)) return fail('DAY_SKIPPED', 'この日はスキップしたため、再挑戦を追加できません。翌日以降に予定を配置します。');
   // 目標を削除した工程の失敗は履歴として残すだけで、再挑戦は作らない
   if (latest.goalId !== null && !data.goals.some((g) => g.goalId === latest.goalId)) return fail('GOAL_NOT_FOUND', 'この工程の目標は削除されているため、再挑戦を追加できません。');
   const used = data.attempts.filter((a) => a.scheduledDate === p.today && a.lifecycle !== 'cancelled' && a.lifecycle !== 'superseded').length;

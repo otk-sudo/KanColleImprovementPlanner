@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
-import { AppService } from '../application/service';
+import { AppService, type RecalcStatus } from '../application/service';
 import type { ParseResult } from '../domain/import/parse';
 import { projectInventory, type InventoryProjection } from '../domain/inventory/projection';
 import type { ScopeKey } from '../domain/inventory/types';
@@ -33,6 +33,8 @@ export interface RunResult<R> {
   /** 実行後に読み直した最新のデータと版（競合時にフォームを読み直すために使う） */
   latest: AppData;
   latestBase: CommandBase;
+  /** 保存後の予定の再計算の結果（保存できなかった場合は null） */
+  recalc: RecalcStatus | null;
 }
 
 export interface ImportInput {
@@ -163,7 +165,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
     async <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string; base?: CommandBase }): Promise<RunResult<R>> => {
       if (busyRef.current) {
         const latest = dataRef.current;
-        return { ok: false, outcome: { status: 'CONFLICT', revision: latest.meta.revision }, message: '保存中です。完了までお待ちください。', errors: [], result: null, latest, latestBase: baseOf(latest) };
+        return { ok: false, outcome: { status: 'CONFLICT', revision: latest.meta.revision }, message: '保存中です。完了までお待ちください。', errors: [], result: null, latest, latestBase: baseOf(latest), recalc: null };
       }
       busyRef.current = true;
       setBusy(true);
@@ -195,6 +197,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
           result: outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED' ? outcome.result : null,
           latest,
           latestBase: baseOf(latest),
+          recalc: 'recalc' in outcome ? (outcome.recalc ?? null) : null,
         };
       } finally {
         busyRef.current = false;

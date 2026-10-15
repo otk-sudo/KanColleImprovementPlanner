@@ -584,6 +584,32 @@ describe('レビュー指摘（PR #1）', () => {
     expect(draft.ok).toBe(false);
   });
 
+  it('確認待ちの下書きがある予定は、その下書きの確定としてだけ記録する（下書きを残したまま二重に確保しない）', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('SaveDraftResult', handleSaveDraft, { draftId: 'd1', attemptId: a.attemptId, occurredDateJst: s.today(), today: s.today(), reportedOutcome: 'failure', knownConsumptions: [{ scope: 'resource:8', amount: -1 }], unknownScopes: ['resource:7'], scopeAnswers: {}, confirmedPerformed: true, recipeSnapshot: null, now: '' }, await base(s));
+    const d = await s.load();
+    const plain = handleRecordResult(d, await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }] }));
+    expect(plain.ok).toBe(false);
+    if (!plain.ok) expect(plain.errors[0]?.code).toBe('DRAFT_OPEN');
+    expect(handleRecordResult(d, await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }], fromDraftId: 'other' })).ok).toBe(false);
+    expect(handleRecordResult(d, await recordPayload(s, a.attemptId, 'failure', { deltas: [{ scope: 'resource:8', amount: -1 }], fromDraftId: 'd1' })).ok).toBe(true);
+  });
+
+  it('一日分をスキップした日には、同日の再挑戦を追加しない', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    await s.run('RecordResult', handleRecordResult, await recordPayload(s, a.attemptId, 'failure'), await base(s));
+    const d = await s.load();
+    const retry = { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: s.today(), limit: 2, now: '' };
+    const skipped = handleSameDayRetry({ ...d, daySkips: [{ date: s.today(), createdAt: '' }] }, retry);
+    expect(skipped.ok).toBe(false);
+    if (!skipped.ok) expect(skipped.errors[0]?.code).toBe('DAY_SKIPPED');
+    expect(handleSameDayRetry(d, retry).ok).toBe(true);
+  });
+
   it('削除した目標の工程には、同日の再挑戦を追加しない', async () => {
     const s = await service();
     await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
