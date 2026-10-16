@@ -12,7 +12,7 @@ import { newId, type AppData, type CommandOutcome, type Handler, type Validation
 
 // 画面と操作の窓口をつなぐ状態。DB を正本とし、画面は保存済みデータから計算した結果を表示する。
 
-export type SaveState = 'saved' | 'saving' | 'error' | 'dirty' | 'review';
+export type SaveState = 'saved' | 'saving' | 'error' | 'reload' | 'dirty' | 'review';
 
 /** 確定操作の前提とした保存データの版。画面やフォームを開いた時点の値を使い、他タブの変更を上書きしない */
 export interface CommandBase {
@@ -30,7 +30,7 @@ export interface RunResult<R> {
   message: string | null;
   errors: ValidationIssue[];
   result: R | null;
-  /** 実行後に読み直した最新のデータと版（競合時にフォームを読み直すために使う） */
+  /** 最後に読み込めたデータと版。読み直し失敗時は保存前の表示を保持し、同じ確定を再送する */
   latest: AppData;
   latestBase: CommandBase;
   /** 保存後の予定の再計算の結果（保存できなかった場合は null） */
@@ -182,7 +182,19 @@ export function StoreProvider({ service, master, manifest, initialData, children
       try {
         const base = options?.base ?? pageBase.current;
         const outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
-        const latest = await refresh();
+        let latest: AppData;
+        try {
+          latest = await refresh();
+        } catch {
+          // 保存の受付記録は残っている可能性がある。入力・確定ID・日時・前提の版を変えずに再送させ、
+          // 保存済みなら ALREADY_APPLIED で確認する。保存失敗と誤表示したり、未処理の例外にしない。
+          const message = '保存処理の後に最新データを読み直せませんでした。入力を保持しています。同じ内容でもう一度確定してください。保存済みの場合は重複せず結果を確認します。';
+          setSaveState('reload');
+          setSaveMessage(message);
+          if (outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED') broadcast();
+          const retained = dataRef.current;
+          return { ok: false, outcome, message, errors: [], result: null, latest: retained, latestBase: baseOf(retained), recalc: 'recalc' in outcome ? (outcome.recalc ?? null) : null };
+        }
         const message = messageFor(outcome);
         const ok = outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED';
         // このタブの確定が保存された後と、競合を知らせた後は、最新の版を画面の版にする
@@ -334,6 +346,26 @@ export function useCommandStamp(...deps: unknown[]): () => { commandId: string; 
     if (held.current?.key !== key) held.current = { key, stamp: { commandId: newId('cmd'), now: new Date().toISOString() } };
     return held.current.stamp;
   }, [key]);
+}
+
+/** 入力が同じ間の再送では、日時だけでなく、日付・計算結果・前提の版を含む要求全体を保持する。
+ * 他タブ通知や日付変更は表示用データを更新するが、受付済み要求の内容を変えない。
+ * 利用者が入力を変更した場合は deps が変わり、別の要求として新しいIDを発行する。 */
+export function useCommandSubmission<P>(...deps: unknown[]) {
+  const { commandGeneration } = useStore();
+  const key = JSON.stringify([commandGeneration, ...deps]);
+  type Request = { commandId: string; payload: P; base: CommandBase };
+  const held = useRef<{ key: string; request: Request } | null>(null);
+  const [last, setLast] = useState<{ key: string; request: Request } | null>(null);
+  const prepare = useCallback((create: (now: string) => { payload: P; base: CommandBase }): Request => {
+    if (held.current?.key !== key) {
+      const request = { commandId: newId('cmd'), ...structuredClone(create(new Date().toISOString())) };
+      held.current = { key, request };
+      setLast(held.current);
+    }
+    return held.current.request;
+  }, [key]);
+  return { prepare, submitted: last?.key === key ? last.request : null };
 }
 
 /** 画面遷移ごとに、その画面を開いた時点の版を記録する（ルーターの内側に置く） */

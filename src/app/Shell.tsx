@@ -26,6 +26,9 @@ function SaveStatus() {
   } else if (saveState === 'error') {
     text = '! 保存に失敗しました   •   日本時間';
     state = 'error';
+  } else if (saveState === 'reload') {
+    text = '! 保存結果の表示を確認してください   •   日本時間';
+    state = 'error';
   } else if (saveState === 'dirty') {
     text = '! 計画の再計算待ち   •   日本時間';
     state = 'dirty';

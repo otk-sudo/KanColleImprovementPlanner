@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Page } from '../../app/Shell';
-import { baseOf, useCommandStamp, useStore, type CommandBase, type RunResult } from '../../app/store';
+import { baseOf, useCommandSubmission, useStore, type CommandBase, type RunResult } from '../../app/store';
 import { handleCorrectResult, handleRecordResult, handleSaveDraft, recordOrderFor } from '../../application/commands';
 import { projectInventory } from '../../domain/inventory/projection';
 import type { ScopeKey } from '../../domain/inventory/types';
@@ -113,7 +113,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<{ text: string; details?: ResultEvent[] } | null>(null);
   // 確定IDと確定日時は、確定を押したときに作って入力内容ごとに固定する（保存済みのまま再送しても ALREADY_APPLIED になる）
-  const stamp = useCommandStamp(form);
+  const recordSubmission = useCommandSubmission<Parameters<typeof handleRecordResult>[1]>(form);
+  const correctSubmission = useCommandSubmission<Parameters<typeof handleCorrectResult>[1]>(form);
   const [eventId] = useState(() => newId('ev'));
   if (!attempt || !form) {
     return (
@@ -168,7 +169,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const result = deltasFromForm(form, rows, attempt.transition);
   const missing = rows.filter((r) => parseCount(form.values[r.key]) === null);
   const isPast = compareDate(form.occurredDate, today) < 0;
-  const needsScope = mode !== 'correct' && (isPast || form.missedAfterImport || !!attempt.lifecycle.match(/superseded/));
+  const needsScope = mode !== 'correct' && !recordSubmission.submitted && (isPast || form.missedAfterImport || !!attempt.lifecycle.match(/superseded/));
   const historyOnly = (Object.entries(form.scopeAnswers) as [ScopeKey, string][]).filter(([, v]) => v === 'historyOnly').map(([k]) => k);
   const applied = result.deltas.filter((d) => !historyOnly.includes(d.scope));
   // 下書きを確定するときは、その下書き自身の確保分を除いて判定する（操作層と同じ）
@@ -177,7 +178,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   const negative = form.outcome && form.outcome !== 'voided' && mode !== 'correct' && !needsScope ? wouldGoNegative(projForCheck, applied) : [];
   // 確認待ち（対象消失など）の予定は、取り込み前の記録漏れとして装備を履歴だけに記録する場合だけ確定できる（S34 で回答）
   const reviewBlocked = mode !== 'correct' && attempt.executionGate === 'reviewRequired' && !needsScope && form.outcome !== 'skip';
-  const ready = form.outcome !== null && missing.length === 0 && result.invalid.length === 0 && negative.length === 0 && attempt.executionGate !== 'predecessorPending' && !reviewBlocked;
+  const ready = !!recordSubmission.submitted || !!correctSubmission.submitted || (form.outcome !== null && missing.length === 0 && result.invalid.length === 0 && negative.length === 0 && attempt.executionGate !== 'predecessorPending' && !reviewBlocked);
 
   const submit = async () => {
     if (!form.outcome) return;
@@ -186,8 +187,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
-      const { commandId, now: stampedAt } = stamp();
-      const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: stampedAt, recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, { commandId, base: form.base });
+      const request = correctSubmission.prepare((now) => ({ payload: { eventId: event.eventId, newOutcome: form.outcome!, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now, recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, base: form.base }));
+      const r = await run('CorrectResult', handleCorrectResult, request.payload, request);
       if (!r.ok) {
         rebase(r);
         const deps = (r.errors[0]?.details as { dependents?: { eventId: string }[] } | undefined)?.dependents ?? [];
@@ -205,11 +206,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       navigate(`/attempts/${encodeURIComponent(attempt.attemptId)}/past`);
       return;
     }
-    const { commandId, now: stampedAt } = stamp();
-    const r = await run(
-      'RecordResult',
-      handleRecordResult,
-      {
+    const request = recordSubmission.prepare((now) => ({
+      payload: {
         attemptId: attempt.attemptId,
         outcome: form.outcome as 'success' | 'failure',
         occurredDateJst: form.occurredDate,
@@ -222,10 +220,11 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
         recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
-        now: stampedAt,
+        now,
       },
-      { commandId, base: form.base },
-    );
+      base: form.base,
+    }));
+    const r = await run('RecordResult', handleRecordResult, request.payload, request);
     if (!r.ok) {
       rebase(r);
       if (r.errors[0]?.code === 'SUCCESSOR_HAS_RESULT') {
@@ -431,7 +430,7 @@ export function DraftConfirmPage() {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draftId] = useState(() => form?.draftId ?? newId('draft'));
-  const stamp = useCommandStamp(attemptId, checked, form);
+  const submission = useCommandSubmission<Parameters<typeof handleSaveDraft>[1]>(attemptId, checked, form);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, form?.draftId ?? null, ctx.attempt?.transition), [data, form?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !form || (form.outcome !== 'success' && form.outcome !== 'failure')) {
     return (
@@ -448,13 +447,11 @@ export function DraftConfirmPage() {
   const attempt = ctx.attempt;
   const r = deltasFromForm(form, rows, attempt.transition);
   const save = async () => {
-    const { commandId, now: stampedAt } = stamp();
-    const res = await run(
-      'SaveDraftResult',
-      handleSaveDraft,
-      { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)), now: stampedAt },
-      { commandId, base: form.base },
-    );
+    const request = submission.prepare((now) => ({
+      payload: { draftId, attemptId, occurredDateJst: form.occurredDate, today, reportedOutcome: form.outcome as 'success' | 'failure', knownConsumptions: r.known, unknownScopes: r.unknownScopes, scopeAnswers: form.scopeAnswers, confirmedPerformed: checked, recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)), now },
+      base: form.base,
+    }));
+    const res = await run('SaveDraftResult', handleSaveDraft, request.payload, request);
     if (!res.ok) {
       if (res.outcome.status === 'CONFLICT' || res.outcome.status === 'EPOCH_MISMATCH') {
         // 同じ確認待ちが別のタブなどで保存されていたら、その最新の内容に読み直し、実施済みの確認をやり直してもらう
@@ -564,7 +561,7 @@ export function PastRecordPage() {
   const [answers, setAnswers] = useState<Partial<Record<ScopeKey, 'apply' | 'historyOnly'>>>(cached?.scopeAnswers ?? {});
   const [message, setMessage] = useState<string | null>(null);
   const [eventId] = useState(() => newId('ev'));
-  const stamp = useCommandStamp(attemptId, answers, cached);
+  const submission = useCommandSubmission<Parameters<typeof handleRecordResult>[1]>(attemptId, answers, cached);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, cached?.draftId ?? null, ctx.attempt?.transition), [data, cached?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !cached || (cached.outcome !== 'success' && cached.outcome !== 'failure')) {
     return (
@@ -591,7 +588,7 @@ export function PastRecordPage() {
   // 所持数に反映する種類だけで、既知の所持数が負にならないか確かめる（下書きの確定では自身の確保分を除く）
   const projForCheck = form.draftId ? projectInventory(data.baselines, data.resultEvents, data.drafts.filter((d) => d.draftId !== form.draftId)) : projection;
   const negative = unanswered.length === 0 ? wouldGoNegative(projForCheck, result.deltas.filter((d) => answers[d.scope] === 'apply' && !fixed.includes(d.scope))) : [];
-  const confirmable = unanswered.length === 0 && !reviewBlocked && negative.length === 0;
+  const confirmable = !!submission.submitted || (unanswered.length === 0 && !reviewBlocked && negative.length === 0);
   const valueAfter = (s: ScopeKey): string => {
     if (answers[s] !== 'apply') {
       if (answers[s] !== 'historyOnly' && !fixed.includes(s)) return '回答後に表示';
@@ -618,11 +615,8 @@ export function PastRecordPage() {
   const scopeName = (s: ScopeKey) => (s === 'equipment' ? '装備' : costKeyPlain(master, s));
   const confirm = async () => {
     const historyOnly = scopes.filter((s) => answers[s] === 'historyOnly');
-    const { commandId, now: stampedAt } = stamp();
-    const r = await run(
-      'RecordResult',
-      handleRecordResult,
-      {
+    const request = submission.prepare((now) => ({
+      payload: {
         attemptId,
         outcome: form.outcome as 'success' | 'failure',
         occurredDateJst: form.occurredDate,
@@ -635,10 +629,11 @@ export function PastRecordPage() {
         recipeSnapshot: snapshotForDraft(data.drafts, form.draftId, () => recipeSnapshotFor(master, attempt, ctx)),
         inputSourceEventIds: inferInputSources(data.resultEvents, attempt, result.deltas, { date: form.occurredDate, order: recordOrderFor(data, attempt, form.occurredDate) }),
         fromDraftId: form.draftId,
-        now: stampedAt,
+        now,
       },
-      { commandId, base: form.base },
-    );
+      base: form.base,
+    }));
+    const r = await run('RecordResult', handleRecordResult, request.payload, request);
     if (!r.ok) {
       if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') formCache.set(formKey(attemptId), { ...form, base: r.latestBase, scopeAnswers: answers });
       if (r.errors[0]?.code === 'SUCCESSOR_HAS_RESULT') return navigate(`/history/rollover/${encodeURIComponent(attemptId)}`);
@@ -728,7 +723,7 @@ export function PastRecordPage() {
         </button>
         <span className="spacer" />
         <button type="button" className={`btn ${confirmable ? 'btn-primary' : ''}`} style={{ width: 300 }} disabled={!confirmable || busy} onClick={() => void confirm()}>
-          {unanswered.length > 0 ? '未回答のため確定不可' : reviewBlocked ? '確認待ちのため確定不可' : negative.length > 0 ? '所持数を確認してください' : 'この内容で確定'}
+          {submission.submitted ? 'この内容で確定' : unanswered.length > 0 ? '未回答のため確定不可' : reviewBlocked ? '確認待ちのため確定不可' : negative.length > 0 ? '所持数を確認してください' : 'この内容で確定'}
         </button>
       </div>
     </Page>

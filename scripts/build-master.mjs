@@ -29,10 +29,10 @@ export const SOURCES = [
     id: 'eo_equipment_upgrades',
     title: 'ElectronicObserverEN/Data EquipmentUpgrades.json（改修レシピ）',
     repository: 'https://github.com/ElectronicObserverEN/Data',
-    commit: 'f9a1326f423308da27a94cab6df1f5688e351e4a',
+    commit: '1a72dff0ec6658e09730335895af5f404ff76d22',
     path: 'Data/EquipmentUpgrades.json',
-    sha256: '9D6148C704DE1BE169DC316A5C61EE8EA900AB367ADEC33F473FEE34D028AB7C',
-    checkedAt: '2026-10-14',
+    sha256: '687BD08FF5D25277F27EB9BA38ABC79C5AD8998C8F0E226ED2D0945F79A503A2',
+    checkedAt: '2026-10-17',
     license: '未確認（リポジトリにライセンス表記なし）',
   },
 ];

@@ -33,9 +33,13 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=chromium
+      # 開発サーバー・テスト入口だけでなく、本番distの実マスター読み込みと保存復元も検証する。
+      - run: npx playwright test --config=playwright.production.config.ts --project=chromium
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results
-          path: test-results/
+          path: |
+            test-results/
+            work/release-readiness/production-results/
           retention-days: 7

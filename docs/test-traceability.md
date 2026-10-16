@@ -2,6 +2,8 @@
 
 2026-10-15。各行は「実行済みの自動テスト」「ローカル検証」「未実施」を区別する。自動テストの成功は架空データでの確認であり、実機・実データでの確認を意味しない。
 
+2026-10-17追記：`tests/real-master.test.ts` は固定実出典の全417エントリを独立計算で照合（418件）。`e2e/release-readiness.spec.ts` は保存後の再表示失敗・確定日時・日付境界・通知との複合条件を16件、`e2e/production.smoke.ts` は本番distをChromium/Windows製品版Chrome/Edgeで計6件検証した。最新の受入証拠と残件は [release-readiness.md](release-readiness.md)。以下の過去のレビュー表にある「E2E未作成」は当時の記録である。
+
 ## 受入基準（docs/acceptance-criteria.md）
 
 | ID | 自動テスト（実行済み） | 未実施・残り |
@@ -10,7 +12,7 @@
 | A02 | e2e/import.spec.ts（資材だけの取り込み・74式EN ファイル・認証情報を受け付けない）、parse.test.ts（port・material・useitem・require_info・ラッパー） | 実ゲームの Chrome/Edge・74式EN の実レスポンスでの取り込み（利用者のゲーム環境が必要） |
 | A03 | e2e/record.spec.ts「A03/A06」、index.test.ts（未収録を不可と断定しない） | — |
 | A04 | plan.test.ts（P01〜P05、確実化 P35/P36）、index.test.ts（p1/p2/extra・更新） | 実マスターの全レシピを手計算と照合した記録はなし（網羅性は master:crosscheck で出典と一致を確認） |
-| A05 | plan.test.ts（担当艦の改造段階違い・未所持・不明）、inventoryModel.test.ts | — |
+| A05 | plan.test.ts（担当艦の改造段階違い・未所持・不明）、inventoryModel.test.ts | 希望担当艦によって素材が変わる場合の再展開に制限あり（ID121/267、R13/R19）。release-readiness.md参照 |
 | A06 | plan.test.ts（曜日・休み・上限・P06〜P08・P19）、e2e/record.spec.ts「A03/A06」 | — |
 | A07 | rollover.test.ts、service.test.ts（P10・P23・P24・P42/P29）、e2e/record.spec.ts（日付変更後の繰越・スキップ・過去日の記録を未実施へ訂正した直後の繰越） | スリープ復帰の実機確認 |
 | A08 | calendarModel.test.ts（P38）、画面比較 S01/S02/S18 | — |
@@ -21,6 +23,8 @@
 | A13 | e2e/layout.spec.ts（拡大画像を Esc で閉じる）、guide.capture.ts（アプリ画面の画像と注釈位置） | ゲーム側の操作（開発者ツール・74式EN の設定）の実機撮影。現在は「画像未取得」と表示 |
 
 ## 処理例（P番号 → テスト）
+
+2026-10-17の公開準備追加試験は `e2e/release-readiness.spec.ts`（保存後の読み直し失敗・確定日時・JST境界）、`e2e/production.smoke.ts`（本番ビルド・実マスター・Windows Chrome/Edge）、`tests/real-master.test.ts`（固定実出典の全エントリ・全段階）を参照。実行結果と外部確認待ちは [release-readiness.md](release-readiness.md) で管理し、下記の旧版レビュー時の未作成記録とは区別する。
 
 | P | テスト |
 |---|---|

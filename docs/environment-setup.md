@@ -30,6 +30,7 @@ npx playwright install chromium
 | 単体・結合テスト | `npm test` | Vitest。計算・取り込み・在庫投影・保存操作（fake-indexeddb） |
 | ブラウザE2E | `npm run test:e2e` | Playwright（chromium）。架空マスター・架空データ・時刻固定。開発サーバーを 5174 で自動起動 |
 | 本番ビルド | `npm run build` | typecheck の後に vite build。CSP を付与し、テスト用の入口は含めない |
+| 本番成果物の試験 | `npm run test:production` | dist をビルドし、Chromium・インストール済み Chrome/Edge で取り込み・保存・復元・外部通信・PC幅を検証。入力は合成データ、マスターは実出典。ゲーム環境の試験とは区別 |
 | 画面比較の撮影 | `npm run screens:capture` | S01〜S34 を 1440×940 で work/screens/app に撮影 |
 | 画面比較 | `npm run screens:compare -- app` | 参照PNGとの差分・並列画像を work/screens/compare/app に出力 |
 | ガイド画像の撮影 | `npm run guide:capture` | 取り込みガイドに載せるアプリ画面（架空データ）を public/guide に撮影 |
