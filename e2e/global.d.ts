@@ -9,6 +9,7 @@ declare global {
       recalc(): Promise<string>;
       failRollover(times: number): void;
       failLoad(times: number): void;
+      reuseNextCommandId(opts?: { advanceRevision?: boolean }): void;
     };
   }
 }

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Page } from '../../app/Shell';
-import { useCommandId, useStore } from '../../app/store';
+import { useCommandId, useCommandStamp, useStore } from '../../app/store';
 import { handleAddHoliday, handleApplyMaster, handleRemoveHoliday, handleRestore, handleSaveSettings } from '../../application/commands';
 import { backupFileName, backupMasterVersion, exportBackup } from '../../application/backupExport';
 import { readBackupFile, summarizeBackup, type BackupCheck } from '../../domain/backup';
@@ -61,7 +61,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
   const picker = useBackupPicker();
   const settingsId = useCommandId(limits, searchDays);
-  const holidayId = useCommandId(start, end);
+  const holidayStamp = useCommandStamp(start, end);
   const save = async () => {
     const r = await run('SaveSettings', handleSaveSettings, { weekdayLimits: limits, searchDays }, { commandId: settingsId });
     // 別のタブなどの変更と競合したら、入力を最新の設定に読み直してから確認してもらう（古い値で上書きしない）
@@ -74,7 +74,9 @@ export function SettingsPage() {
   };
   const addHoliday = async () => {
     if (!isValidDate(start) || !isValidDate(end)) return setMessage('開始日と終了日を入力してください。');
-    const r = await run('AddHoliday', handleAddHoliday, { holiday: { holidayId: newId('holiday'), start, end } }, { commandId: holidayId });
+    // 休みのIDは確定IDから作る（同じ入力のまま押し直したら同じ内容で送り、保存済みなら二重に追加しない）
+    const { commandId } = holidayStamp();
+    const r = await run('AddHoliday', handleAddHoliday, { holiday: { holidayId: commandId.replace(/^cmd-/, 'holiday-'), start, end } }, { commandId });
     setMessage(r.ok ? null : r.message);
     if (r.ok) {
       setStart('');

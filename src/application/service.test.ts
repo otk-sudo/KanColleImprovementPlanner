@@ -983,6 +983,51 @@ describe('保護・復元', () => {
     expect([applied.meta.activeMasterVersion, applied.meta.masterReviewRequired, applied.meta.pendingMasterVersion]).toEqual(['next', false, null]);
   });
 
+  it('確認待ちの間に、さらに新しいマスターを読み込んだタブが起動したら、確認待ちの版をその版に進め、確認待ちを始めた版のタブは止める', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const next = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'next' })), clock);
+    await next.init();
+    const before = await s.load();
+    // 確認待ちのまま、さらに新しい版が配布された
+    const newer = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'newer' })), clock);
+    await newer.init();
+    const held = await newer.load();
+    // 保留は解除せず、適用する版だけを進める（計画と在庫はそのまま）
+    expect([held.meta.activeMasterVersion, held.meta.masterReviewRequired, held.meta.pendingMasterVersion]).toEqual([m.version, true, 'newer']);
+    expect(held.attempts).toEqual(before.attempts);
+    expect(await newer.recalculate()).toBe('MASTER_REVIEW');
+    // 確認待ちを始めた版のタブも、計画を作った版のタブも、もう適用も書き込みもしない
+    expect((await next.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: 'next' }, await base(next))).status).toBe('WRITER_INCOMPATIBLE');
+    expect(await next.recalculate()).toBe('STALE_MASTER');
+    expect((await s.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: m.version }, await base(s))).status).toBe('WRITER_INCOMPATIBLE');
+    expect(await s.recalculate()).toBe('STALE_MASTER');
+    expect((await newer.load()).meta.revision).toBe(held.meta.revision);
+    // 新しい版のタブは確認して適用できる
+    expect((await newer.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: 'newer' }, await base(newer))).status).toBe('APPLIED');
+    const applied = await newer.load();
+    expect([applied.meta.activeMasterVersion, applied.meta.masterReviewRequired, applied.meta.pendingMasterVersion]).toEqual(['newer', false, null]);
+  });
+
+  it('確認待ちの間に、計画を作った版の配布へ戻してタブが起動したら、その版で確認を終えられる', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const next = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'next' })), clock);
+    await next.init();
+    // 配布を元の版へ戻した（計画を作った版と同じ版のタブが起動する）
+    const back = new AppService(db, m, clock);
+    await back.init();
+    const held = await back.load();
+    expect([held.meta.activeMasterVersion, held.meta.masterReviewRequired, held.meta.pendingMasterVersion]).toEqual([m.version, true, m.version]);
+    // 取り下げた版のタブは、もう適用も書き込みもしない
+    expect((await next.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: 'next' }, await base(next))).status).toBe('WRITER_INCOMPATIBLE');
+    expect(await next.recalculate()).toBe('STALE_MASTER');
+    expect((await back.load()).meta.revision).toBe(held.meta.revision);
+    expect((await back.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: m.version }, await base(back))).status).toBe('APPLIED');
+    const applied = await back.load();
+    expect([applied.meta.activeMasterVersion, applied.meta.masterReviewRequired, applied.meta.pendingMasterVersion]).toEqual([m.version, false, null]);
+  });
+
   it('マスターの確認で計算を保留している間は、記録の訂正もしない', async () => {
     const s = await service();
     await seedPlan(s);

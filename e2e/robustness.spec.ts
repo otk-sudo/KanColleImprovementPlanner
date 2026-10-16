@@ -97,6 +97,54 @@ test('A10：設定の保存が別のタブの変更と競合したら、入力�
   expect((await state(b)).settings.searchDays).toBe(90);
 });
 
+test('A10：同じ確定IDが別の内容で保存済みなら、新しいIDで黙って確定し直さず、知らせた後に押し直したときだけ保存する', async ({ page }) => {
+  await start(page, { data: seed, route: '/settings' });
+  await page.locator('#search-days').selectOption('90');
+  await page.evaluate(() => window.__kaishu!.reuseNextCommandId());
+  await page.getByRole('button', { name: '設定を保存' }).click();
+  await expect(page.getByText('別の内容で保存済みのため、この内容は保存していません。')).toBeVisible();
+  expect((await state(page)).settings.searchDays).toBe(366);
+  // 知らせた後に押し直した確定は、新しい確定IDで保存する
+  await page.getByRole('button', { name: '設定を保存' }).click();
+  await expect(page.getByText('設定を保存しました。')).toBeVisible();
+  expect((await state(page)).settings.searchDays).toBe(90);
+});
+
+test('A10：同じ確定IDの別の内容で版が進んでいたら、知らせた後に押し直した確定は競合として扱い、最新の設定に読み直す', async ({ page }) => {
+  await start(page, { data: seed, route: '/settings' });
+  await page.locator('#search-days').selectOption('90');
+  // 別の内容の確定が、この確定IDで保存済み（版が1つ進んでいる）
+  await page.evaluate(() => window.__kaishu!.reuseNextCommandId({ advanceRevision: true }));
+  await page.getByRole('button', { name: '設定を保存' }).click();
+  await expect(page.getByText('別の内容で保存済みのため、この内容は保存していません。')).toBeVisible();
+  // 画面の版は進めないので、押し直した確定は最新の版と比べて競合になり、入力を最新の設定に読み直す
+  await page.getByRole('button', { name: '設定を保存' }).click();
+  await expect(page.getByText('別のタブなどで内容が変更されました。')).toBeVisible();
+  await expect(page.locator('#search-days')).toHaveValue('366');
+  expect((await state(page)).settings.searchDays).toBe(366);
+  // 最新の内容を確認してから選び直した確定は保存する
+  await page.locator('#search-days').selectOption('90');
+  await page.getByRole('button', { name: '設定を保存' }).click();
+  await expect(page.getByText('設定を保存しました。')).toBeVisible();
+  expect((await state(page)).settings.searchDays).toBe(90);
+});
+
+test('A10：休みの追加の保存後に画面の読み直しだけが失敗しても、押し直せば休みを二重に追加しない', async ({ page }) => {
+  await start(page, { data: seed, route: '/settings' });
+  await page.locator('#holiday-start').fill('2026-10-20');
+  await page.locator('#holiday-end').fill('2026-10-21');
+  // 保存は成功し、その後の読み直しだけが失敗する（入力は残る）
+  await page.evaluate(() => window.__kaishu!.failLoad(1));
+  await page.getByRole('button', { name: '休みを追加' }).click();
+  await expect.poll(async () => (await state(page)).settings.holidays.length).toBe(1);
+  await expect(page.getByRole('button', { name: '休みを追加' })).toBeEnabled();
+  // 同じ確定ID・同じ内容で送り直すので、保存済みとして受け付ける
+  await page.getByRole('button', { name: '休みを追加' }).click();
+  await expect(page.getByRole('list', { name: '登録済みの休み' }).getByRole('listitem')).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect((await state(page)).settings.holidays).toHaveLength(1);
+});
+
 test('A10：保護数の保存が別のタブの変更と競合したら、最新の保護設定に読み直す（古い値で上書きしない）', async ({ context }) => {
   const withEq: BackupSpec = { ...seed, baselines: [...seed.baselines!, eqBaseline([[ID.mainGunA, 6, 3]])] };
   const route = `/inventory/protection/${ID.mainGunA}:6`;

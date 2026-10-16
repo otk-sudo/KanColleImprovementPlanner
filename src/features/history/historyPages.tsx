@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page } from '../../app/Shell';
-import { useCommandId, useStore } from '../../app/store';
+import { useCommandStamp, useStore } from '../../app/store';
 import { handleCancelDraft } from '../../application/commands';
 import { compareDate, formatShortDate } from '../../domain/jst';
 import type { Attempt, ResultEvent } from '../../domain/model';
@@ -218,7 +218,8 @@ export function CancelDraftPage() {
   const draft = data.drafts.find((d) => d.draftId === draftId);
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState<string | null>(null);
-  const commandId = useCommandId(draftId, reason);
+  // 確定IDと確定日時は確定を押したときに作り、同じ入力のまま押し直したら同じ内容で送る
+  const stamp = useCommandStamp(draftId, reason);
   if (!draft) {
     return (
       <Page nav="history" title="確認待ちの記録を訂正" top={196}>
@@ -233,7 +234,8 @@ export function CancelDraftPage() {
   }
   const attempt = data.attempts.find((a) => a.attemptId === draft.attemptId);
   const submit = async () => {
-    const r = await run('CancelDraftAsNotPerformed', handleCancelDraft, { draftId, reason, now: new Date().toISOString() }, { commandId });
+    const { commandId, now } = stamp();
+    const r = await run('CancelDraftAsNotPerformed', handleCancelDraft, { draftId, reason, now }, { commandId });
     if (!r.ok) return setMessage(r.message);
     // 過去日の未実施に戻った場合は翌日処理の対象として再評価する
     // 保存できなければ、移動先の画面に再試行できる警告を残す

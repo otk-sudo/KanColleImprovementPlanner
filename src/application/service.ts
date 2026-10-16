@@ -39,14 +39,15 @@ export class AppService {
     // 同梱のマスターが変わったら、計画がある場合は計算保留にする。保存できないまま新しいマスターで計画を表示しない
     for (let i = 0; i < 4; i++) {
       const data = await loadData(this.db);
-      if (data.meta.activeMasterVersion === this.master.version) return;
+      if (data.meta.masterReviewRequired ? data.meta.pendingMasterVersion === this.master.version : data.meta.activeMasterVersion === this.master.version) return;
       const r = await executeInternal(
         this.db,
         data.meta.revision,
         (fresh) => {
-          // 既に計算を保留している（マスターの参照がない復元を含む）なら、利用者が確認するまで版を変えない
-          // （確認待ちを始めた版の記録がない旧データだけ、このタブの版を記録する）
-          if (fresh.meta.masterReviewRequired) return fresh.meta.pendingMasterVersion ? null : { meta: { pendingMasterVersion: this.master.version } };
+          // 既に計算を保留している（マスターの参照がない復元を含む）なら、利用者が確認するまで保留を続け、確認待ちの版だけをこのタブの版にする。
+          // 起動時の目録はキャッシュせずに読むので、起動したタブの版がいま配布中の版（確認待ちを始めた後の配布や、配布の差し戻し）。
+          // 既に開いている古いタブは起動し直さないので、確認待ちの版と違うまま staleMaster で書き込みと適用を止める
+          if (fresh.meta.masterReviewRequired) return fresh.meta.pendingMasterVersion === this.master.version ? null : { meta: { pendingMasterVersion: this.master.version } };
           const hasPlans = fresh.goals.length > 0 || fresh.attempts.length > 0;
           return {
             meta:

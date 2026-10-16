@@ -77,7 +77,7 @@ interface StoreValue {
   rolloverAndReport: () => Promise<boolean>;
   /** 翌日処理を保存できず、再試行を待っている */
   rolloverPending: boolean;
-  /** このタブで確定が保存されるたびに増える（次の確定には新しい確定IDを使う） */
+  /** このタブの確定が保存されるか、保存していないことが確かなときに増える（次の確定には新しい確定IDを使う） */
   commandGeneration: number;
   recalculate: () => Promise<void>;
   importSession: ImportSession | null;
@@ -107,7 +107,7 @@ function messageFor(outcome: CommandOutcome<unknown>): string | null {
     case 'WRITER_INCOMPATIBLE':
       return '新しい版のアプリで保存されたデータです。このタブを再読み込みしてください（読み取り専用で表示しています）。';
     case 'COMMAND_ID_REUSED':
-      return '確定内容が変わったため、もう一度確定してください。';
+      return 'この確定は別の内容で保存済みのため、この内容は保存していません。最新の内容を確認してから、もう一度確定してください。';
     case 'STORAGE_ERROR':
       return outcome.message;
     case 'VALIDATION_ERROR':
@@ -181,16 +181,18 @@ export function StoreProvider({ service, master, manifest, initialData, children
       setSaveMessage(null);
       try {
         const base = options?.base ?? pageBase.current;
-        let outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
-        // 同じ確定IDで別の内容が既に保存されていた（画面が残ったまま別の確定に移った場合など）なら、新しいIDで1回だけ確定し直す
-        if (outcome.status === 'COMMAND_ID_REUSED') outcome = await service.run(commandType, handler, payload, { ...base, commandId: newId('cmd') });
+        const outcome = await service.run(commandType, handler, payload, { ...base, commandId: options?.commandId ?? newId('cmd') });
         const latest = await refresh();
         const message = messageFor(outcome);
         const ok = outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED';
         // このタブの確定が保存された後と、競合を知らせた後は、最新の版を画面の版にする
         if (ok || outcome.status === 'CONFLICT' || outcome.status === 'EPOCH_MISMATCH') pageBase.current = baseOf(latest);
-        // 保存できた確定のIDは使い終わり。同じ画面が残っていても次の確定は新しいIDで行う
-        if (ok) setCommandGeneration((g) => g + 1);
+        // 保存できた確定と、保存していないことが確かな確定（競合・入力の誤りなど）のIDと確定日時は使い終わり。同じ画面が残っていても
+        // 次の確定は新しいIDと日時で行う。同じ要求を送り直すのは、保存に失敗した場合と、保存後の読み直しが失敗した場合（例外）だけ。
+        // 同じIDで別の内容が保存済みだった場合も、新しいIDで黙って確定し直さず知らせ、押し直した確定だけを新しいIDで行う。
+        // 画面の版は進めないので、その間に版が進んでいれば押し直した確定は競合になり、フォームを最新に読み直す
+        // （版を自分で渡す取り込みは、プレビューを最新の所持から作り直すので、競合と同じく版を進めて確認し直してもらう）
+        if (outcome.status !== 'STORAGE_ERROR') setCommandGeneration((g) => g + 1);
         if (ok) {
           broadcast();
           if ('recalc' in outcome && outcome.recalc === 'FAILED') {
@@ -313,18 +315,25 @@ export function StoreProvider({ service, master, manifest, initialData, children
 
 /** 確定操作ごとの commandId。依存値（入力内容）が変わったら新しい ID にする */
 export function useCommandId(...deps: unknown[]): string {
-  return useCommandStamp(...deps).commandId;
-}
-
-/**
- * 確定IDと確定日時の組。同じ入力のまま確定し直すと同じIDと日時を送るので、保存済みなら ALREADY_APPLIED になる
- * （確定日時を送るたびに作ると、内容が変わったと判定されて再送できない）。このタブで確定が保存されたら作り直す
- */
-export function useCommandStamp(...deps: unknown[]): { commandId: string; now: string } {
   const { commandGeneration } = useStore();
   const key = JSON.stringify([commandGeneration, ...deps]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => ({ commandId: newId('cmd'), now: new Date().toISOString() }), [key]);
+  return useMemo(() => newId('cmd'), [key]);
+}
+
+/**
+ * 確定IDと確定日時の組を返す関数。確定を押したとき（最初の送信）に作り、同じ入力のまま確定し直すと同じIDと日時を送るので、
+ * 保存済みなら ALREADY_APPLIED になる（確定日時を送るたびに作ると、内容が変わったと判定されて再送できない）。
+ * 画面を開いた時刻を確定日時にしないよう、描画では作らない。入力が変わるか、このタブの確定が保存される（または保存していないことが確かになる）と作り直す
+ */
+export function useCommandStamp(...deps: unknown[]): () => { commandId: string; now: string } {
+  const { commandGeneration } = useStore();
+  const key = JSON.stringify([commandGeneration, ...deps]);
+  const held = useRef<{ key: string; stamp: { commandId: string; now: string } } | null>(null);
+  return useCallback(() => {
+    if (held.current?.key !== key) held.current = { key, stamp: { commandId: newId('cmd'), now: new Date().toISOString() } };
+    return held.current.stamp;
+  }, [key]);
 }
 
 /** 画面遷移ごとに、その画面を開いた時点の版を記録する（ルーターの内側に置く） */

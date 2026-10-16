@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Page } from '../../app/Shell';
-import { useCommandId, useStore } from '../../app/store';
+import { useCommandStamp, useStore } from '../../app/store';
 import { handleSetProtection } from '../../application/commands';
 import { protectionChangePreview } from '../../domain/import/apply';
 import { projectInventory } from '../../domain/inventory/projection';
@@ -328,10 +328,11 @@ export function ProtectionPage() {
   // 確認画面を開いたときの装備の取り込み。競合を知らせた後は、最新の取り込みに対する確認として読み直す
   const [snapshotAtOpen, setSnapshotAtOpen] = useState(() => projection.equipment.snapshotId);
   const preview = protectionChangePreview({ owned, goalUse, newManual: count });
-  // 確定IDは、確認の前提（取り込み・確認待ちかどうか）が変わったら作り直す
-  const commandId = useCommandId(bucket, count, selected, snapshotAtOpen, reconciling);
+  // 確定IDと確定日時は確定を押したときに作り、確認の前提（取り込み・確認待ちかどうか）が変わったら作り直す
+  const stamp = useCommandStamp(bucket, count, selected, snapshotAtOpen, reconciling);
   const name = equipLabel(master, equipmentId, star);
   const save = async () => {
+    const { commandId, now } = stamp();
     const r = await run(reconciling ? 'ResolveProtection' : 'SetProtection', handleSetProtection, {
       equipmentId,
       star,
@@ -340,7 +341,7 @@ export function ProtectionPage() {
       reason: '手動保護',
       resolve: reconciling,
       snapshotId: snapshotAtOpen,
-      now: new Date().toISOString(),
+      now,
     }, { commandId });
     if (!r.ok) {
       // 別のタブなどの変更と競合したら、最新の保護設定に読み直してから確認してもらう（古い値で上書きしない）

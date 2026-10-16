@@ -15,6 +15,11 @@ declare global {
       failRollover(times: number): void;
       /** 次の n 回の読み込みを失敗させる（保存後の読み直しが失敗したときの再送の確認用） */
       failLoad(times: number): void;
+      /**
+       * 次の確定の確定IDに、別の内容の受付記録を置く（同じ確定IDの別内容を黙って確定し直さないかの確認用）。
+       * advanceRevision なら、その別の内容で版が1つ進んだことにする
+       */
+      reuseNextCommandId(opts?: { advanceRevision?: boolean }): void;
     };
   }
 }
@@ -61,6 +66,20 @@ export function installTestHooks(service: AppService): void {
         }
         return original();
       };
+    },
+    reuseNextCommandId(opts?: { advanceRevision?: boolean }) {
+      let armed = true;
+      const original = service.run.bind(service);
+      service.run = (async (commandType, handler, payload, base) => {
+        if (armed && base.commandId) {
+          armed = false;
+          const { meta } = await loadData(service.db);
+          const savedRevision = opts?.advanceRevision ? meta.revision + 1 : meta.revision;
+          if (opts?.advanceRevision) await service.db.meta.put({ ...meta, revision: savedRevision });
+          await service.db.commandReceipts.put({ datasetEpoch: meta.datasetEpoch, commandId: base.commandId, commandType, payloadHash: 'other-content', savedRevision, result: null, savedAt: service.nowIso() });
+        }
+        return original(commandType, handler, payload, base);
+      }) as AppService['run'];
     },
   };
 }

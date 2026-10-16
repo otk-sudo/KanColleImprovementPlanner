@@ -233,6 +233,22 @@ test('A09：記録の保存後に画面の読み直しだけが失敗しても�
   expect(d.attempts.filter((a) => a.outcome === 'success')).toHaveLength(1);
 });
 
+test('A09：記録の確認画面を開いたまま時間が経ってから確定したら、画面を開いた時刻ではなく確定した時刻を記録日時にする', async ({ page }) => {
+  await start(page, { data: seed, route: '/goals' });
+  await addGoal(page, '主砲A', 6);
+  await page.goto('/#/calendar');
+  await page.getByRole('link', { name: '結果を記録' }).first().click();
+  await page.getByRole('radio', { name: '成功' }).click();
+  await page.getByRole('button', { name: '内容を確認' }).click();
+  // 確認の画面のまま3時間後（同じ日本時間の日付）に確定する
+  await page.clock.setFixedTime(new Date('2026-10-14T03:00:00.000Z'));
+  await page.getByRole('button', { name: 'この内容で記録' }).click();
+  await page.waitForURL(/#\/calendar/);
+  const d = await state(page);
+  expect(d.resultEvents).toHaveLength(1);
+  expect(d.resultEvents[0]!.recordedAt).toBe('2026-10-14T03:00:00.000Z');
+});
+
 test('A10：同日の取り込みで確認待ちになった予定は、そのまま確定できず、取り込み前の記録漏れとして装備を履歴のみにすれば記録できる', async ({ page }) => {
   await start(page, { data: seed, route: '/goals' });
   await addGoal(page, '主砲A', 6);

@@ -112,8 +112,8 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
   });
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<{ text: string; details?: ResultEvent[] } | null>(null);
-  // 確定IDと確定日時は入力内容ごとに固定する（保存済みのまま再送しても ALREADY_APPLIED になる）
-  const { commandId, now: stampedAt } = useCommandStamp(form);
+  // 確定IDと確定日時は、確定を押したときに作って入力内容ごとに固定する（保存済みのまま再送しても ALREADY_APPLIED になる）
+  const stamp = useCommandStamp(form);
   const [eventId] = useState(() => newId('ev'));
   if (!attempt || !form) {
     return (
@@ -186,6 +186,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       return;
     }
     if (mode === 'correct' && event) {
+      const { commandId, now: stampedAt } = stamp();
       const r = await run('CorrectResult', handleCorrectResult, { eventId: event.eventId, newOutcome: form.outcome, newDeltas: result.deltas, occurredDateJst: form.occurredDate, historyOnlyScopes: historyOnly, reason: form.reason, today, now: stampedAt, recipeSnapshot: event.recipeSnapshot ?? recipeSnapshotFor(master, attempt, ctx) }, { commandId, base: form.base });
       if (!r.ok) {
         rebase(r);
@@ -204,6 +205,7 @@ export function RecordPage({ mode }: { mode: 'record' | 'correct' | 'resume' }) 
       navigate(`/attempts/${encodeURIComponent(attempt.attemptId)}/past`);
       return;
     }
+    const { commandId, now: stampedAt } = stamp();
     const r = await run(
       'RecordResult',
       handleRecordResult,
@@ -429,7 +431,7 @@ export function DraftConfirmPage() {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draftId] = useState(() => form?.draftId ?? newId('draft'));
-  const { commandId, now: stampedAt } = useCommandStamp(attemptId, checked, form);
+  const stamp = useCommandStamp(attemptId, checked, form);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, form?.draftId ?? null, ctx.attempt?.transition), [data, form?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !form || (form.outcome !== 'success' && form.outcome !== 'failure')) {
     return (
@@ -446,6 +448,7 @@ export function DraftConfirmPage() {
   const attempt = ctx.attempt;
   const r = deltasFromForm(form, rows, attempt.transition);
   const save = async () => {
+    const { commandId, now: stampedAt } = stamp();
     const res = await run(
       'SaveDraftResult',
       handleSaveDraft,
@@ -561,7 +564,7 @@ export function PastRecordPage() {
   const [answers, setAnswers] = useState<Partial<Record<ScopeKey, 'apply' | 'historyOnly'>>>(cached?.scopeAnswers ?? {});
   const [message, setMessage] = useState<string | null>(null);
   const [eventId] = useState(() => newId('ev'));
-  const { commandId, now: stampedAt } = useCommandStamp(attemptId, answers, cached);
+  const stamp = useCommandStamp(attemptId, answers, cached);
   const rows = useConsumptionRows(ctx, useMemo(() => draftConsumptions(data, cached?.draftId ?? null, ctx.attempt?.transition), [data, cached?.draftId, ctx.attempt?.transition]));
   if (!ctx.attempt || !cached || (cached.outcome !== 'success' && cached.outcome !== 'failure')) {
     return (
@@ -615,6 +618,7 @@ export function PastRecordPage() {
   const scopeName = (s: ScopeKey) => (s === 'equipment' ? '装備' : costKeyPlain(master, s));
   const confirm = async () => {
     const historyOnly = scopes.filter((s) => answers[s] === 'historyOnly');
+    const { commandId, now: stampedAt } = stamp();
     const r = await run(
       'RecordResult',
       handleRecordResult,
