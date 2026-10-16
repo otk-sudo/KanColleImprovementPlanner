@@ -499,6 +499,20 @@ describe('レビュー指摘（PR #1）', () => {
     expect(after.daySkips).toEqual(before.daySkips);
   });
 
+  it('日付が変わる前に保存した確定を、日付が変わってから同じ確定ID・同じ内容で送り直したら、保存済みとして受け付ける', async () => {
+    const s = await service();
+    await seedPlan(s);
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const skip = await recordPayload(s, a.attemptId, 'skip');
+    const env = { ...(await base(s)), commandId: 'cmd-before-midnight' };
+    expect((await s.run('SkipAttempt', handleRecordResult, skip, env)).status).toBe('APPLIED');
+    // 応答や読み直しが失敗し、日付が変わってから画面に残った同じ内容で送り直す
+    clockMs += 24 * 60 * 60 * 1000;
+    const retry = await s.run('SkipAttempt', handleRecordResult, skip, env);
+    expect(retry.status).toBe('ALREADY_APPLIED');
+    expect((await s.load()).resultEvents.filter((e) => e.outcome === 'skip')).toHaveLength(1);
+  });
+
   it('失敗を成功へ訂正すると、結果のない後継を取り消し、結果のある後継があれば保存しない', async () => {
     const s = await service();
     await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
