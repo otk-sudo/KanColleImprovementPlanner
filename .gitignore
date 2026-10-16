@@ -17,3 +17,8 @@ Thumbs.db
 
 # Local design screenshots; publication rights not verified
 /docs/ui-reference/screens/*.png
+
+# Generated common master (source distribution terms not yet confirmed)
+/public/master/
+# Local-only images for screen comparison (publication rights not verified)
+/public/local-images/

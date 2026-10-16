@@ -11,6 +11,7 @@
 | api_port/port | api_data.api_shipのapi_id=個体ID、api_ship_id=艦娘マスターID。api_data.api_materialのapi_id/api_value | ships全件＋提供resource ID。艦娘改造状態はマスターIDから照合 |
 | api_get_member/material | api_data配列のapi_id/api_value | 提供resource IDのみ。配列の順番に依存しない |
 | api_get_member/useitem | api_data配列のapi_id/api_count | item一覧。省略IDとnullの扱いは次項 |
+| api_get_member/require_info（2026-10-15追加） | api_data.api_slot_itemの個体一覧（slot_itemと同じ項目）、api_data.api_useitemのapi_id/api_count | equipment全件＋提供item IDのみ。api_useitemが欠落・nullなら装備だけ更新。アイテムは配列にあるIDだけ（useitemと同じ規則） |
 
 api_get_member/ship2、ship3、ship_deck、改修結果単体は、初期の所持全件取込に採用しない。レスポンス単体で全件性を証明できないものは「母港レスポンスを取得してください」と案内。未対応APIの取込で既存在庫を消さない。
 
@@ -35,6 +36,7 @@ ID・数量・★に文字列の暗黙数値変換はしない。整数範囲外
 - [ship2](https://github.com/ElectronicObserverEN/ElectronicObserver/blob/9a61d31c4ec574342f23a306aad47f9d3af769e3/ElectronicObserver/Observer/kcsapi/api_get_member/ship2.cs)、[ship3](https://github.com/ElectronicObserverEN/ElectronicObserver/blob/9a61d31c4ec574342f23a306aad47f9d3af769e3/ElectronicObserver/Observer/kcsapi/api_get_member/ship3.cs)：全件/部分を混同しない根拠。
 - [useitem](https://github.com/ElectronicObserverEN/ElectronicObserver/blob/9a61d31c4ec574342f23a306aad47f9d3af769e3/ElectronicObserver/Observer/kcsapi/api_get_member/useitem.cs)：一覧とnullの扱い。
 - 同版Data/EquipmentData.cs、ShipData.cs、UseItem.csのプロパティでID・改修値・数量の対応を確認。MaterialData.csで8種の資材の対応を確認。
+- （2026-10-15）同版 api_get_member/require_info.cs：api_slot_item で装備一覧を置換し、api_useitem でアイテムを更新する実装を確認。実ゲーム応答での確認は未実施。
 
 ## 残る実データ確認
 

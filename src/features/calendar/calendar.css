@@ -1,0 +1,775 @@
+/* カレンダー S01/S02/S18/S24/S25/S30 */
+.cal-layout {
+  display: grid;
+  grid-template-columns: 736px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  margin-bottom: 18px;
+  /* 参照では表示切替の右端がカードより 6px 右へ出る */
+  margin-right: -6px;
+}
+
+.cal-arrow {
+  width: 44px;
+  justify-content: flex-start;
+  padding: 0 0 6px 14px;
+  font-size: 13px;
+}
+
+.cal-month {
+  position: relative;
+  top: -2px;
+  margin: 0 18px;
+  font-size: 23px;
+  line-height: 32px;
+  font-weight: 400;
+  min-width: 187px;
+  text-align: left;
+}
+
+.cal-today {
+  width: 70px;
+  margin-left: 21px;
+}
+
+.cal-mode {
+  width: 62px;
+}
+
+.cal-mode-week {
+  width: 62px;
+  margin-left: 10px;
+}
+
+.cal-mode-day {
+  width: 94px;
+  margin-left: 12px;
+}
+
+.cal-month-card {
+  padding: 14px 10px 32px;
+}
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 100px);
+  column-gap: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  padding-left: 8px;
+  height: 45px;
+  color: var(--text);
+}
+
+.cal-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 100px);
+  column-gap: 2px;
+}
+
+.cal-cell {
+  position: relative;
+  height: 95px;
+  border: none;
+  border-radius: 2px;
+  background: var(--cell);
+  text-align: left;
+  padding: 4px 8px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+}
+
+.cal-cell.is-outside {
+  cursor: default;
+}
+
+.cal-cell.is-today,
+.cal-cell.is-selected {
+  background: var(--today);
+}
+
+.cal-cell.is-selected:not(.is-today) {
+  box-shadow: inset 0 0 0 2px var(--today);
+  background: #eef7f6;
+}
+
+.cal-cell.is-holiday {
+  background: #f1f3f4;
+}
+
+.cal-daynum {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cal-entry {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cal-entry-sub {
+  margin-top: 9px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+}
+
+.cal-entry-goal {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 13px;
+  color: var(--primary);
+}
+
+.cal-side {
+  min-height: 636px;
+  padding: 14px 24px 24px;
+  position: relative;
+}
+
+.cal-side-date {
+  margin: 0;
+  font-size: 21px;
+  line-height: 30px;
+  font-weight: 400;
+}
+
+.cal-side-meta {
+  margin: 11px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--sub);
+}
+
+.cal-side-warn {
+  margin-top: 25px;
+  padding: 8px 14px 13px;
+  border-radius: 8px;
+}
+
+.cal-side-warn-main {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cal-side-warn-sub {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.cal-side-empty {
+  margin-top: 24px;
+}
+
+.cal-side-entry {
+  margin-top: 19px;
+}
+
+.cal-side-entry.is-compact {
+  margin-top: 14px;
+}
+
+.cal-side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cal-side-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  white-space: pre;
+}
+
+.is-compact .cal-side-title {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.cal-side-kind {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+
+.cal-side-kind.kind-tentative,
+.cal-side-kind.kind-review,
+.cal-side-kind.kind-pending {
+  color: var(--warn);
+}
+
+.cal-side-kind.kind-success {
+  color: var(--ok);
+}
+
+.cal-side-kind.kind-failure {
+  color: var(--fail);
+}
+
+.cal-side-helper {
+  margin: 15px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.is-compact .cal-side-helper {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.cal-side-mode {
+  margin: 19px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.is-compact .cal-side-mode {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.cal-side-mini-actions {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.cal-side-req-head {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  margin: 21px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cal-side-req {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 17px;
+}
+
+.cal-side-req li {
+  display: grid;
+  grid-template-columns: 184px 1fr;
+}
+
+.cal-side-req li span:last-child {
+  text-align: left;
+  padding-left: 2px;
+}
+
+.cal-side-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 58px;
+}
+
+.cal-side-actions .btn {
+  width: 164px;
+}
+
+.cal-side-note {
+  margin: 22px 0 0;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.cal-unplaced {
+  display: flex;
+  align-items: center;
+  margin-top: 18px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: var(--radius-card);
+  background: var(--bar);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: pre;
+}
+
+.cal-unplaced:hover {
+  text-decoration: underline;
+}
+
+/* S02 */
+.week-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin-bottom: 25px;
+  padding-right: 32px;
+}
+
+.week-range {
+  position: relative;
+  top: -3px;
+  margin: 0 14px 0 0;
+  font-size: 23px;
+  line-height: 32px;
+  font-weight: 400;
+}
+
+.week-mode {
+  width: 62px;
+}
+
+.week-mode + .week-mode {
+  margin-left: 2px;
+}
+
+.week-today {
+  width: 120px;
+  margin-left: 4px;
+}
+
+.week-grid {
+  display: grid;
+  /* 参照は 154px × 7 列（カード全幅より 10px 狭い） */
+  grid-template-columns: repeat(7, minmax(0, 154px));
+  gap: 12px;
+}
+
+.week-day {
+  min-height: 550px;
+  padding: 17px 10px 12px;
+}
+
+.week-day-head {
+  display: block;
+  padding-left: 4px;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.week-day-limit {
+  margin: 20px 0 0 4px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.week-cards {
+  list-style: none;
+  margin: 30px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.week-card a {
+  display: flex;
+  flex-direction: column;
+  min-height: 170px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.week-card.tone-ok a {
+  background: var(--soft);
+}
+
+.week-card.tone-warn a {
+  background: var(--warn-bg);
+}
+
+.week-card.tone-fail a {
+  background: var(--error-bg);
+}
+
+.week-card.tone-gray a {
+  background: var(--secondary);
+}
+
+.week-card-kind {
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.tone-text-ok {
+  color: var(--ok);
+}
+
+.tone-text-warn {
+  color: var(--warn);
+}
+
+.tone-text-fail {
+  color: var(--fail);
+}
+
+.tone-text-gray {
+  color: var(--sub);
+}
+
+.week-card-title {
+  margin-top: 17px;
+  font-size: 14px;
+  line-height: 17px;
+}
+
+.week-card-sub {
+  margin-top: 31px;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--muted);
+}
+
+.week-foot {
+  display: flex;
+  gap: 28px;
+  margin: 36px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.week-foot a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* S18 */
+.day-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 21px;
+}
+
+.day-date-wrap {
+  position: relative;
+  width: 245px;
+  height: 40px;
+}
+
+.day-date {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.day-date-label {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  /* ボタンと同じく文字は中心より 3px 上 */
+  padding: 0 14px 6px;
+  border-radius: var(--radius-button);
+  background: var(--secondary);
+  font-size: 13px;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.day-date-wrap:focus-within .day-date-label {
+  outline: 3px solid #1d9a9b;
+  outline-offset: 2px;
+}
+
+.day-step {
+  width: 100px;
+}
+
+.day-step + .day-step {
+  margin-left: -2px;
+}
+
+.day-skip {
+  width: 268px;
+}
+
+.day-skip[aria-disabled='true'] {
+  color: var(--sub);
+  cursor: not-allowed;
+}
+
+.day-card {
+  padding: 16px 24px 24px 20px;
+  min-height: 318px;
+}
+
+.day-card .card-title,
+.day-total .card-title,
+.skip-card .card-title,
+.pend-card .card-title,
+.pend-card2 .card-title {
+  margin-left: 0;
+}
+
+.day-empty {
+  margin: 20px 0 0 6px;
+}
+
+.day-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 244px;
+  gap: 54px;
+  margin-top: 25px;
+}
+
+.day-entry + .day-entry {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.day-entry-body {
+  padding-left: 6px;
+}
+
+.day-entry-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  white-space: pre-wrap;
+}
+
+.day-entry-helper {
+  margin: 24px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.day-helper-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.day-helper-link:hover {
+  text-decoration: underline;
+}
+
+.day-entry-need {
+  margin: 21px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.day-entry-warn {
+  margin-top: 26px;
+  padding: 17px 19px 20px;
+  min-height: 67px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.day-retry {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.day-entry-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 3px;
+}
+
+.day-entry-actions .btn {
+  width: 242px;
+}
+
+.day-entry-actions .btn + .btn:last-child:nth-child(3) {
+  margin-top: 20px;
+}
+
+.day-total {
+  margin-top: 22px;
+  padding: 15px 24px 19px 20px;
+  min-height: 252px;
+}
+
+.day-total-list {
+  list-style: none;
+  margin: 20px 0 0 6px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.day-total-list li {
+  display: grid;
+  grid-template-columns: 277px 277px 277px 1fr;
+  height: 48px;
+}
+
+.day-total-note {
+  margin: 14px 0 0 6px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* S24/S25 */
+.skip-card {
+  padding: 16px 32px 32px 20px;
+  min-height: 550px;
+}
+
+.skip-target {
+  margin: 40px 0 0 12px;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.skip-info {
+  margin: 35px 0 0 12px;
+  border-radius: var(--radius-card);
+  background: var(--soft);
+  padding: 17px 25px 24px;
+  min-height: 118px;
+}
+
+.skip-info-main {
+  margin: 0;
+  font-size: 19px;
+  line-height: 28px;
+  color: var(--primary);
+}
+
+.skip-info-sub {
+  margin: 19px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.skip-same-day {
+  margin: 43px 0 0 12px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.skip-undo {
+  margin: 25px 0 0 12px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.skip-actions {
+  display: flex;
+  justify-content: space-between;
+  margin: 80px 0 0 12px;
+}
+
+/* S30 */
+.pend-card {
+  padding: 16px 24px 24px 20px;
+  min-height: 242px;
+}
+
+.pend-main {
+  margin: 19px 0 0 6px;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.pend-warn {
+  margin: 31px 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.pend-next {
+  margin: 34px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.pend-card2 {
+  margin-top: 24px;
+  padding: 16px 24px 24px 20px;
+  min-height: 250px;
+}
+
+.pend-line {
+  margin: 15px 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.pend-line + .pend-line {
+  margin-top: 25px;
+}
+
+.pend-line + .pend-line:last-child {
+  margin-top: 27px;
+}
+
+.pend-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 82px;
+}
+
+/* PC幅（1280px未満：詳細は下へ） */
+@media (max-width: 1279px) {
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+  .cal-weekdays,
+  .cal-row {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .cal-side {
+    min-height: 0;
+  }
+  .week-grid {
+    overflow-x: auto;
+    grid-template-columns: repeat(7, minmax(120px, 1fr));
+  }
+  .day-entry {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .day-total-list li {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* 縮小ウィンドウ・拡大表示では上部のボタン列を折り返し、はみ出させない */
+  .cal-toolbar,
+  .week-toolbar,
+  .day-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    row-gap: 10px;
+    margin-right: 0;
+    padding-right: 0;
+  }
+  .cal-month {
+    min-width: 0;
+  }
+  .day-skip {
+    width: auto;
+  }
+}

@@ -1,0 +1,81 @@
+/* S15 */
+.welcome-hero {
+  padding: 16px 24px 24px;
+  min-height: 232px;
+}
+
+.welcome-hero .card-title {
+  margin-left: -4px;
+}
+
+.welcome-lead {
+  margin: 28px 0 0 2px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.welcome-actions {
+  margin: 45px 0 0 2px;
+  gap: 22px;
+}
+
+.welcome-steps {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.welcome-step {
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  padding: 26px 24px 24px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.welcome-step:hover {
+  box-shadow: 0 0 0 2px var(--soft);
+}
+
+.welcome-step-no {
+  font-size: 28px;
+  line-height: 36px;
+  color: var(--primary);
+}
+
+.welcome-step-title {
+  margin-top: 26px;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.welcome-step-sub {
+  margin-top: 23px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--sub);
+}
+
+.welcome-note {
+  margin: 54px 0 0 26px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--sub);
+}
+
+.welcome-restore {
+  margin: 31px 0 0 26px;
+}
+
+@media (max-width: 1100px) {
+  .welcome-steps {
+    grid-template-columns: 1fr;
+  }
+  .welcome-step {
+    min-height: 0;
+  }
+}

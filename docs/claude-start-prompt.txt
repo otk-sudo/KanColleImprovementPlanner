@@ -4,7 +4,7 @@ CLAUDE.md、AGENTS.md、README.mdと案内されたdocsを読み、Git状態を�
 資材不足は警告付き仮配置し、翌日（日本時間）に未完了の遅延が確定してからリスケします。
 通常ブラウザのレスポンス貼付と74式ENの保存レスポンス取込に対応し、環境別ガイドを作ります。
 private/equipment-input.jsonは所持品の入力例で全装備マスターではありません。個人データをGitや公開物へ含めないでください。
-Claudeが実装・テスト・修正、Codexがレビューする運用です。GitHub Pagesでの静的サイト公開が決定しています。GitHub remoteと本プロジェクトのマージ許可は未設定です。
+Claudeが実装・テスト・修正、Codexがレビューする運用です。GitHub Pagesでの静的サイト公開が決定しています。GitHub originとmain保護は設定済み。本プロジェクトのマージ許可は未付与です。
 段階別に検証し、未実装・未検証を隠さずdocs/implementation-status.mdを更新してください。
 
 UI作業前に docs/ui-reference/README.md を読み、対象の screens/Sxx.png を画像として開いてデザインを確認してください。同じIDのJSONで文言・配置を確認し、requirements.mdと詳細設計を優先してください。実装後は同じ状態の画面で比較してください。
@@ -14,3 +14,5 @@ UI作業前に docs/ui-reference/README.md を読み、対象の screens/Sxx.png
 参照用74式EN/KC3Kaiなどはローカルコピーも含め読み取り専用です。取り込み確定したJSONは提供scopeの最新基準とし、取り込み前の実績を二重減算しないでください。
 
 2026-10-14ユーザー指示：現在のS01〜S34の画面レイアウトで進めてください。追加のデザイン作成を実装開始の前提にせず、画面例にない状態は詳細設計に従って実装・検証してください。
+
+開始ブランチはfeature/implementation、追跡先はorigin/feature/implementation、PR先はmainです。archive/local-only-*は旧非公開履歴なのでpush・mergeしないでください。mainへ直接pushせず、実装・テスト後に作業ブランチをpushしてPRを作成してください。

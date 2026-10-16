@@ -1,0 +1,287 @@
+/* ガイド S11/S12/S23 */
+.guide-tabs {
+  display: flex;
+  gap: 12px;
+}
+
+.guide-banner {
+  margin-top: 22px;
+  min-height: 66px;
+  padding: 18px 22px 22px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.guide-steps {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  column-gap: 23px;
+  align-items: start;
+  min-height: 99px;
+  padding: 14px 24px 16px 22px;
+}
+
+.guide-no {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-top: 8px;
+  /* 参照は数字が中心より 4px 上 */
+  padding-bottom: 8px;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--primary);
+  font-size: 20px;
+}
+
+.guide-step-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 400;
+}
+
+.guide-step-desc {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--sub);
+}
+
+.guide-step-link {
+  font-size: 12px;
+  align-self: center;
+  text-decoration: none;
+}
+
+.guide-foot {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  margin-top: 39px;
+}
+
+.guide-foot-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.guide-trouble {
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.guide-trouble summary {
+  cursor: pointer;
+  color: var(--primary);
+}
+
+.guide-trouble dt {
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.guide-trouble dd {
+  margin: 2px 0 0;
+  color: var(--sub);
+}
+
+/* S23 */
+.guide-steps-head {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  margin-bottom: 22px;
+}
+
+.guide-flow {
+  margin: 0;
+  font-size: 14px;
+}
+
+.guide-steps-grid {
+  display: grid;
+  grid-template-columns: 760px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.guide-shot-card {
+  min-height: 555px;
+  padding: 16px 24px 24px 20px;
+}
+
+.guide-shot-card .card-title,
+.guide-check-card .card-title {
+  margin-left: 0;
+  white-space: pre;
+}
+
+/* 画像枠は設計の画像領域（高さ 367px）に合わせ、画像は縦横比を保って中央に置く */
+.guide-shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 367px;
+  margin: 26px 0 0 4px;
+  padding: 10px;
+  border: none;
+  border-radius: var(--radius-card);
+  background: #e3e9ec;
+  cursor: zoom-in;
+  width: calc(100% - 4px);
+}
+
+.guide-shot-frame {
+  position: relative;
+  display: block;
+  height: 100%;
+}
+
+.guide-shot img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.guide-mark {
+  position: absolute;
+  border: 3px solid #e2731e;
+  border-radius: 6px;
+}
+
+.guide-mark-no {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e2731e;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+
+.guide-shot-note {
+  margin: 14px 0 0 4px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.guide-placeholder {
+  margin: 26px 0 0 4px;
+  height: 367px;
+  border-radius: var(--radius-card);
+  background: #e3e9ec;
+  padding: 87px 65px 0;
+}
+
+.guide-ph-title {
+  margin: 0;
+  font-size: 25px;
+  line-height: 36px;
+}
+
+.guide-ph-sub {
+  margin: 13px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--sub);
+}
+
+.guide-ph-zoom {
+  margin: 23px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--primary);
+}
+
+.guide-shot-warn {
+  margin: 42px 0 0 4px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.guide-check-card {
+  min-height: 555px;
+  padding: 16px 24px 24px 20px;
+}
+
+.guide-checks {
+  list-style: none;
+  margin: 30px 0 0 4px;
+  padding: 0;
+}
+
+.guide-checks li + li {
+  margin-top: 44px;
+}
+
+.guide-check-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.guide-check-desc {
+  margin: 20px 0 0;
+  font-size: 15px;
+  line-height: 18px;
+}
+
+.guide-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.guide-nav-pos {
+  font-size: 13px;
+}
+
+.guide-dialog {
+  max-width: min(1400px, 96vw);
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.guide-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: 80vh;
+}
+
+.guide-dialog .btn {
+  margin-top: 10px;
+}
+
+.guide-dialog::backdrop {
+  background: rgba(21, 47, 57, 0.6);
+}
+
+@media (max-width: 1279px) {
+  .guide-steps-grid {
+    grid-template-columns: 1fr;
+  }
+  .guide-steps-head {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

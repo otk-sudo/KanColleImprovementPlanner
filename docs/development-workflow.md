@@ -4,8 +4,8 @@ CreationLogの現行CLAUDE.md/AGENTS.md/docs/development-workflow.mdを2026-10-1
 
 ## ブランチと提出
 - mainを基準。feature/<内容>、fix/<内容>、docs/<内容>等で作業し、mainへ直接pushしない。
-- 初期化文書はローカルmainへ初回コミット。以降の作業開始ブランチはfeature/implementation。
-- remoteは未設定。所有者・リポジトリ名・公開範囲を推測してGitHubへ作成しない。
+- 公開履歴のmainが基準。Claudeの初回作業ブランチはfeature/implementation（origin追跡）。
+- originはhttps://github.com/otk-sudo/KanColleImprovementPlanner.git。公開リポジトリ。
 - status/diff確認後、対象ファイルを明示してstage。staged差分とgit diff --checkを確認。
 - 日本語のコミットメッセージ。無関係な変更、private/の個人データ、秘密情報を含めない。
 - remote設定後、許可された作業ではClaudeが実装/検証/PR作成/修正、Codexがレビュー。既存の同一head PRを更新する。
@@ -30,7 +30,14 @@ CreationLogの現行CLAUDE.md/AGENTS.md/docs/development-workflow.mdを2026-10-1
 - --auto、--admin、force push、保護の迂回を使わない。破壊的操作・ブランチ削除を通常フローに含めない。
 - CreationLog限定の追加確認不要マージ許可は未継承。本プロジェクトの許可がなければマージ準備完了の報告まで。
 - merge/ビルド成功/無指摘と、ブラウザ実機検証・製品完成・公開を区別。
-- この文書は運用規約でありGitHubブランチ保護やCI設定ではない。現時点でどちらも未設定。
+- mainにはPR必須・会話解消必須・管理者にも適用・強制push/削除禁止を設定済み。CI（.github/workflows/ci.yml）はPRで実行するが、必須ステータスチェックへの登録は未設定（2026-10-15）。GitHubの承認人数は0で、Codexの最新SHAレビューとユーザーのマージ許可は別途運用で確認する。
 
 ## 2026-10-14 公開リポジトリの初回push
 ユーザーがotk-sudo/KanColleImprovementPlannerの公開作成とpushを承認。originは同URLに設定済み。公開用docs/public-designは、個人所持集計を含む旧ローカル履歴を親に持たない新規ルートから開始する。旧main/feature/implementationはローカル保存用であり、そのままpush・mergeしない。公開後の作業は公開ブランチを起点にする。mainへの直接push・マージ許可は今回含まれない。
+
+## Claude Code開始環境（2026-10-14）
+- GitHubのdefault branchはmain。公開済み設計コミットcc2cdc3から作成。
+- カレントとpush先はfeature/implementation。PRのbaseはmain。通常のgit pushはこの作業ブランチへ送る。
+- 旧ローカルmainとfeature/implementationはarchive/local-only-mainとarchive/local-only-implementationへ改名して保存。これらは個人集計を含む旧履歴であり、push/merge/公開ブランチへの取り込み禁止。git push --all/--mirrorは使用しない。
+- docs/public-designは公開設計時点のブランチとして保持。今後の実装は新しいfeature/implementationで行う。
+- PR統合はsquashのみ。自動マージ・保護回避は使わない。Codexレビューの自動起動は未設定。CIは2026-10-15にPR検証用を追加（公開ワークフローは未作成、docs/release.md）。
