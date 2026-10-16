@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidDate } from './jst';
+import { happenedBefore } from './results/results';
 import { MAX_GOAL_COUNT, type Attempt, type Baseline, type DaySkip, type DraftResult, type Goal, type PreferredHelper, type Protection, type ResultEvent, type Settings } from './model';
 
 // バックアップ（design/10・14）。生のAPIレスポンス・認証情報は含めない。
@@ -274,7 +275,13 @@ export function referentialIssues(b: BackupData): string[] {
     else if (e.status === 'active' && attemptById.get(e.attemptId)!.resultEventId !== e.eventId) issues.push(`実績 ${e.eventId} がその試行の結果として登録されていません`);
     // 有効な実績の試行は、取り消されておらず、結果が実績と同じ
     else if (e.status === 'active' && (attemptById.get(e.attemptId)!.outcome !== e.outcome || attemptById.get(e.attemptId)!.lifecycle === 'cancelled')) issues.push(`実績 ${e.eventId} と試行 ${e.attemptId} の結果・状態が一致しません`);
-    for (const s of e.inputSourceEventIds) if (!eventIds.has(s)) issues.push(`実績 ${e.eventId} の前提実績 ${s} がありません`);
+    for (const s of e.inputSourceEventIds) {
+      const src = eventById.get(s);
+      if (!src) issues.push(`実績 ${e.eventId} の前提実績 ${s} がありません`);
+      // 有効な実績の入力元は、それより前に起きた有効な成功だけ（記録で作れない依存を復元しない）。
+      // 前後関係は厳密な順序なので、自分自身や循環する依存もここで拒否される
+      else if (e.status === 'active' && (src.status !== 'active' || src.outcome !== 'success' || !happenedBefore({ date: src.occurredDateJst, order: src.occurredOrder }, { date: e.occurredDateJst, order: e.occurredOrder }))) issues.push(`実績 ${e.eventId} の前提実績 ${s} が、より前に起きた有効な成功ではありません`);
+    }
     if (e.fromDraftId) {
       // 元になった下書きは同じ試行の確定済みの下書き（別の試行の下書きを指すと、取り込み済みの判定を取り違える）
       const d = b.drafts.find((x) => x.draftId === e.fromDraftId);

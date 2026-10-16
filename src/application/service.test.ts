@@ -473,6 +473,32 @@ describe('レビュー指摘（PR #1）', () => {
     expect((await s.run('RecordResult', handleRecordResult, missed, await base(s))).status).toBe('APPLIED');
   });
 
+  it('日付をまたいで開いていた画面の「今日」では、スキップ・一日分のスキップ・同日の再挑戦・記録を受け付けない', async () => {
+    const s = await service();
+    await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });
+    const a = (await s.load()).attempts.find((x) => x.scheduledDate === s.today())!;
+    const yesterday = s.today();
+    const failed = await recordPayload(s, a.attemptId, 'failure');
+    expect((await s.run('RecordResult', handleRecordResult, failed, await base(s))).status).toBe('APPLIED');
+    const before = await s.load();
+    // 日本時間の0時を過ぎたが、翌日処理より前（画面の「今日」は前日のまま）
+    clockMs += 24 * 60 * 60 * 1000;
+    const stale = [
+      await s.run('SameDayRetry', handleSameDayRetry, { stepKey: a.stepKey, attemptId: `${a.stepKey}@2`, today: yesterday, limit: 2, now: '' }, await base(s)),
+      await s.run('SkipDate', handleSkipDate, { date: yesterday, today: yesterday, eventIds: ['ev-skip'], now: yesterday }, await base(s)),
+      await s.run('CorrectResult', handleCorrectResult, { eventId: failed.eventId, newOutcome: 'skip', newDeltas: [], occurredDateJst: yesterday, historyOnlyScopes: [], reason: '', today: yesterday, now: '' }, await base(s)),
+    ];
+    for (const r of stale) {
+      expect(r.status).toBe('VALIDATION_ERROR');
+      if (r.status === 'VALIDATION_ERROR') expect(r.errors[0]?.code).toBe('DATE_CHANGED');
+    }
+    const after = await s.load();
+    expect(after.meta.revision).toBe(before.meta.revision);
+    expect(after.attempts).toEqual(before.attempts);
+    expect(after.resultEvents).toEqual(before.resultEvents);
+    expect(after.daySkips).toEqual(before.daySkips);
+  });
+
   it('失敗を成功へ訂正すると、結果のない後継を取り消し、結果のある後継があれば保存しない', async () => {
     const s = await service();
     await seedPlan(s, { weekdayLimits: [2, 2, 2, 2, 2, 2, 2] });

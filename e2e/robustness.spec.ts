@@ -129,6 +129,32 @@ test('A10：同じ確定IDの別の内容で版が進んでいたら、知らせ
   expect((await state(page)).settings.searchDays).toBe(90);
 });
 
+test('A10：マスターの確認待ちの間にさらに新しい版のタブが起動したら、先に確認を始めた版のタブは適用できないことを知らせ、再読み込みを求める', async ({ context }) => {
+  const withGoal: BackupSpec = { ...seed, goals: [goal({ goalId: 'g1', equipmentId: ID.mainGunA, targetStar: 6, count: 1 })] };
+  const a = await context.newPage();
+  await start(a, { data: withGoal, route: '/settings' });
+  const version = (v: string) => ({ ...screenMaster(), masterVersion: v });
+  // B は新しい版（v2）で起動し、計算を保留して確認を始める
+  const b = await context.newPage();
+  await serveFixtureMaster(b, version('screen-fixture-v2'));
+  await fixClock(b);
+  await b.goto('/#/settings');
+  await expect(b.getByRole('button', { name: 'このマスターを適用して再計算' })).toBeVisible();
+  // 確認を終える前に、さらに新しい版（v3）の C が起動する（確認待ちの版は v3 になる）
+  const c = await context.newPage();
+  await serveFixtureMaster(c, version('screen-fixture-v3'));
+  await fixClock(c);
+  await c.goto('/#/settings');
+  await expect(c.getByRole('button', { name: 'このマスターを適用して再計算' })).toBeVisible();
+  // B で適用しようとしても保存せず、理由を表示して再読み込みを求める（同じボタンを黙って残さない）
+  await b.getByRole('button', { name: 'このマスターを適用して再計算' }).click();
+  await expect(b.getByText('このタブの共通マスター（screen-fixture-v2）は、確認待ちの版（screen-fixture-v3）と違います。')).toBeVisible();
+  await expect(b.getByRole('button', { name: 'このマスターを適用して再計算' })).toHaveCount(0);
+  await expect(b.getByRole('button', { name: '再読み込み' })).toBeVisible();
+  const d = await state(c);
+  expect([d.meta.activeMasterVersion, d.meta.masterReviewRequired, d.meta.pendingMasterVersion]).toEqual(['screen-fixture-v1', true, 'screen-fixture-v3']);
+});
+
 test('A10：休みの追加の保存後に画面の読み直しだけが失敗しても、押し直せば休みを二重に追加しない', async ({ page }) => {
   await start(page, { data: seed, route: '/settings' });
   await page.locator('#holiday-start').fill('2026-10-20');

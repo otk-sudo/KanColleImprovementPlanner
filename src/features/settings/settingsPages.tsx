@@ -200,8 +200,9 @@ export function SettingsPage() {
 }
 
 function MasterCard() {
-  const { data, master, run, busy } = useStore();
+  const { data, master, run, busy, service } = useStore();
   const commandId = useCommandId(master.version);
+  const [message, setMessage] = useState<string | null>(null);
   if (!data.meta.masterReviewRequired && data.meta.activeMasterVersion === master.version) {
     return (
       <p className="set-master-line text-sub" id="master">
@@ -209,6 +210,27 @@ function MasterCard() {
       </p>
     );
   }
+  // 別のタブが別の版のマスターを読み込んだ後は、このタブの版では確認も適用もできない（押しても拒否されるボタンを残さず、再読み込みを求める）
+  if (service.staleMaster(data.meta)) {
+    const other = data.meta.masterReviewRequired ? `確認待ちの版（${data.meta.pendingMasterVersion}）` : `保存データに適用済みの版（${data.meta.activeMasterVersion}）`;
+    return (
+      <section className="card set-master" id="master" aria-labelledby="set-master-title">
+        <h2 className="card-title" id="set-master-title">
+          共通マスターの確認
+        </h2>
+        <p role="alert">
+          このタブの共通マスター（{master.version}）は、{other}と違います。別のタブで別の版が読み込まれたため、このタブでは確認も適用もできません。ページを再読み込みしてください。
+        </p>
+        <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+          再読み込み
+        </button>
+      </section>
+    );
+  }
+  const apply = async () => {
+    const r = await run('ApplyMasterVersion', handleApplyMaster, { masterVersion: master.version }, { commandId });
+    setMessage(r.ok ? null : r.message);
+  };
   const missingGoals = data.goals.filter((g) => !master.equipment.has(g.equipmentId));
   const brokenAttempts = data.attempts.filter((a) => a.lifecycle === 'active' && a.outcome === 'none' && transitionOptions(master, a.transition).length === 0);
   return (
@@ -224,7 +246,12 @@ function MasterCard() {
         <li>このマスターで条件が見つからない未実施の予定：{brokenAttempts.length}件（確認待ちになります）</li>
         <li>過去の実績は保存済みの改修条件で表示し、新しいマスターで書き換えません。</li>
       </ul>
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run('ApplyMasterVersion', handleApplyMaster, { masterVersion: master.version }, { commandId })}>
+      {message ? (
+        <p className="field-error" role="alert">
+          {message}
+        </p>
+      ) : null}
+      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void apply()}>
         このマスターを適用して再計算
       </button>
     </section>

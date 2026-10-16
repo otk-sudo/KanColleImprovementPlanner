@@ -105,6 +105,12 @@ export class AppService {
   async run<P, R>(commandType: string, handler: Handler<P, R>, payload: P, base: { datasetEpoch: string; expectedRevision: number; commandId?: string }): Promise<CommandOutcome<R> & { recalc?: RecalcStatus; commandId: string }> {
     const commandId = base.commandId ?? newId('cmd');
     if (this.staleMaster((await loadData(this.db)).meta)) return { status: 'WRITER_INCOMPATIBLE', commandId };
+    // 日付で決まる操作（スキップ・同日の再挑戦・記録など）は、画面の「今日」が実行時の日本時間の日付と同じときだけ受け付ける
+    // （日付をまたいで開いていた画面から、日付の切り替えの処理より前に前日の操作として保存しない）
+    const screenToday = (payload as { today?: unknown } | null)?.today;
+    if (typeof screenToday === 'string' && screenToday !== this.today()) {
+      return { status: 'VALIDATION_ERROR', errors: [{ code: 'DATE_CHANGED', message: '日本時間の日付が変わりました。最新の予定を確認してから、もう一度操作してください（この操作は保存していません）。' }], commandId };
+    }
     const outcome = await executeCommand(this.db, { commandId, commandType, datasetEpoch: base.datasetEpoch, expectedRevision: base.expectedRevision, payload }, handler, this.nowIso());
     if (outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED') {
       const recalc = await this.recalculate();

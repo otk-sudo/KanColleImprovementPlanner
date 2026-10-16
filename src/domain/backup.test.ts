@@ -125,6 +125,28 @@ describe('バックアップの検証', () => {
     expect(parseBackup(JSON.stringify(backup({ meta, resultEvents: [event], attempts: [attempt('success')] })), 'm1').ok).toBe(true);
   });
 
+  it('有効な実績の入力元が、より前に起きた有効な成功でない（自分自身・循環・後の実績・取り消し・失敗）バックアップを拒否する', () => {
+    const t = { kind: 'improve' as const, equipmentId: 1, fromStar: 0, toStar: 1 };
+    type Ev = { status?: 'active' | 'voided'; outcome?: 'success' | 'failure'; sources?: string[] };
+    const build = (x: Ev, y: Ev) => {
+      // X（10/12）と Y（10/13）の2件。取り消した実績は試行の結果として指さない
+      const ev = (id: 'X' | 'Y', o: Ev, date: string, seq: number) => ({ eventId: `e${id}`, attemptId: id, stepKey: id, goalId: 'g', originalSequence: seq, revision: 1, status: o.status ?? 'active', outcome: o.outcome ?? 'success', occurredDateJst: date, occurredOrder: 1, recordedAt: '', deltas: [], historyOnlyScopes: [], fromDraftId: null, recipeSnapshot: null, inputSourceEventIds: o.sources ?? [], history: [] });
+      const at = (id: 'X' | 'Y', o: Ev, date: string) => ({ attemptId: id, stepKey: id, goalId: 'g', transition: t, scheduledDate: date, dayOrder: 1, outcome: o.status === 'voided' ? ('none' as const) : (o.outcome ?? 'success'), lifecycle: 'active' as const, executionGate: 'ready' as const, predecessorAttemptId: null, createdAt: '', helperShipId: null, mode: 'normal' as const, resultEventId: o.status === 'voided' ? null : `e${id}`, cancelReason: null });
+      const data = backup({ meta: { nextSequence: 3, lastProcessedDateJst: null, revision: 1 }, resultEvents: [ev('X', x, '2026-10-12', 1), ev('Y', y, '2026-10-13', 2)], attempts: [at('X', x, '2026-10-12'), at('Y', y, '2026-10-13')] });
+      return parseBackup(JSON.stringify(data), 'm1').ok;
+    };
+    // 前に起きた有効な成功を入力元にするのは正常
+    expect(build({}, { sources: ['eX'] })).toBe(true);
+    expect(build({}, { outcome: 'failure', sources: ['eX'] })).toBe(true);
+    // 自分自身・循環・後に起きた実績
+    expect(build({ sources: ['eX'] }, {})).toBe(false);
+    expect(build({ sources: ['eY'] }, { sources: ['eX'] })).toBe(false);
+    expect(build({ sources: ['eY'] }, {})).toBe(false);
+    // 取り消した実績・失敗の実績は出力がない
+    expect(build({ status: 'voided' }, { sources: ['eX'] })).toBe(false);
+    expect(build({ outcome: 'failure' }, { sources: ['eX'] })).toBe(false);
+  });
+
   it('数量が負の基準在庫を拒否する', () => {
     const bad = backup({ baselines: baselinesFrom({ resources: { 8: 10 } }).map((b) => ({ ...b, value: -1 })) });
     expect(parseBackup(JSON.stringify(bad), 'm1').ok).toBe(false);
