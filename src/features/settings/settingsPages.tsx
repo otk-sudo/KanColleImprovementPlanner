@@ -274,17 +274,21 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
   const [epoch] = useState(() => newId('epoch'));
   const commandId = useCommandId(session?.fileName, confirmHold);
   // 復元後の日付変更の処理を保存できなかった場合は、完了と表示せず再試行を求める（復元自体は保存済み）
-  const [rolloverRetry, setRolloverRetry] = useState<{ masterMissing: boolean } | null>(null);
+  const [rolloverRetry, setRolloverRetry] = useState<{ masterMissing: boolean; readFailed?: boolean } | null>(null);
   const finishRestore = async (masterMissing: boolean) => {
-    const rolled = await service.rollover();
-    await refresh();
-    if (!rolled.saved) {
-      setRolloverRetry({ masterMissing });
-      return;
+    try {
+      const rolled = await service.rollover();
+      await refresh();
+      if (!rolled.saved) {
+        setRolloverRetry({ masterMissing });
+        return;
+      }
+      setRolloverRetry(null);
+      setNotice(masterMissing ? 'バックアップを復元しました。必要なマスターの確認が終わるまで予定の再計算を保留しています。' : 'バックアップを復元しました。');
+      navigate('/calendar');
+    } catch {
+      setRolloverRetry({ masterMissing, readFailed: true });
     }
-    setRolloverRetry(null);
-    setNotice(masterMissing ? 'バックアップを復元しました。必要なマスターの確認が終わるまで予定の再計算を保留しています。' : 'バックアップを復元しました。');
-    navigate('/calendar');
   };
   const preSave = () => {
     const now = new Date().toISOString();
@@ -296,6 +300,12 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
     if (!session?.check.ok) return;
     const r = await run('RestoreBackup', handleRestore, { backup: session.check.backup, newEpoch: epoch, masterMissing: session.check.masterMissing, bundledMasterVersion: master.version, confirmedPlanHold: session.holdConfirmed || confirmHold, nowMs: Date.now(), now: new Date().toISOString() }, { commandId });
     if (!r.ok) {
+      if (r.outcome.status === 'APPLIED' || r.outcome.status === 'ALREADY_APPLIED') {
+        // 復元はepochを置き換え、旧受付記録を消す。保存済みなら復元を再送せず、確認・翌日処理だけを再試行する。
+        formCache.delete('restore');
+        setRolloverRetry({ masterMissing: session.check.masterMissing, readFailed: true });
+        return;
+      }
       // 復元前の保存の後に内容が変わったら、その保存には最新の内容が入っていないので、保存をやり直すまで復元しない
       if (r.outcome.status === 'CONFLICT' || r.outcome.status === 'EPOCH_MISMATCH') {
         setPreSaved(false);
@@ -311,11 +321,11 @@ export function RestorePage({ masterMode }: { masterMode: boolean }) {
     return (
       <Page nav="settings" title="バックアップを復元" top={196}>
         <div className="banner banner-warn page-alert" role="alert">
-          バックアップは復元しましたが、日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してから再試行してください。
+          {rolloverRetry.readFailed ? 'バックアップは復元しましたが、復元後の最新データを確認できませんでした。復元は繰り返さず、確認を再試行してください。' : 'バックアップは復元しましたが、日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してから再試行してください。'}
         </div>
         <section className="card restore-card">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void finishRestore(rolloverRetry.masterMissing)}>
-            日付変更の処理を再試行
+            {rolloverRetry.readFailed ? '復元結果の確認を再試行' : '日付変更の処理を再試行'}
           </button>
         </section>
       </Page>

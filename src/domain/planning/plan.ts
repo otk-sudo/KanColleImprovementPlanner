@@ -154,6 +154,15 @@ export function buildPlan(input: PlanInput): PlanResult {
   const goals = [...input.goals].sort(goalOrder);
   const goalRank = new Map(goals.map((g, i) => [g.goalId, i]));
   const preferred = new Map(input.preferredHelpers.map((p) => [p.stepKey, p.shipId]));
+  const attemptsByKey = new Map<string, Attempt[]>();
+  for (const a of input.attempts) {
+    const list = attemptsByKey.get(a.stepKey) ?? [];
+    list.push(a);
+    attemptsByKey.set(a.stepKey, list);
+  }
+  for (const list of attemptsByKey.values()) list.sort((a, b) => attemptSeq(a) - attemptSeq(b));
+  const latestOf = (key: string): Attempt | undefined => [...(attemptsByKey.get(key) ?? [])].reverse().find((a) => a.lifecycle !== 'cancelled');
+  const isClaim = (a: Attempt): boolean => (a.lifecycle === 'active' && (a.outcome === 'none' || a.outcome === 'draft' || a.outcome === 'skip')) || a.outcome === 'failure';
   const warnings: string[] = [];
 
   const emptyChanges: AttemptChanges = { create: [], update: [], cancel: [] };
@@ -214,14 +223,14 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   // ---- 2. 工程の情報（レシピ候補・担当艦・費用） ----
   const infoCache = new Map<string, TransitionInfo>();
-  const info = (t: Transition): TransitionInfo => {
-    const k = transitionKey(t);
+  const info = (t: Transition, preferredShipId: number | null = null, fixedWeekday: number | null = null): TransitionInfo => {
+    const k = `${transitionKey(t)}|helper:${preferredShipId}|day:${fixedWeekday}`;
     let v = infoCache.get(k);
     if (!v) {
       const options = transitionOptions(m, t);
-      const helper = helperInfo(m, options, inv.ships, null);
-      const first = helper.candidates[0];
-      const defaultOpt = first ? options.find((o) => o.entryIndex === first.entryIndex) : options[0];
+      const helper = helperInfo(m, options, inv.ships, preferredShipId);
+      const first = (fixedWeekday === null ? undefined : helper.candidates.find(c => c.days.includes(fixedWeekday))) ?? helper.candidates[0];
+      const defaultOpt = first ? options.find((o) => o.entryIndex === first.entryIndex) : preferredShipId === null ? options[0] : options.find(o => o.helpers.some(h => h.shipIds.includes(preferredShipId)));
       v = {
         options,
         helper,
@@ -234,11 +243,69 @@ export function buildPlan(input: PlanInput): PlanResult {
     }
     return v;
   };
+  const infoForStep = (t: Transition, stepKey: string): TransitionInfo => {
+    const existing = latestOf(stepKey);
+    const pref = preferred.get(stepKey) ?? null;
+    // 希望担当が今日に適合する場合は明示指定を優先する。日付・実行順は固定したまま反映する。
+    // 不適合なら既存担当の費用を保持して確認待ちにし、別素材へ無断で切り替えない。
+    const frozen = existing?.lifecycle === 'active' && existing.outcome === 'none' && existing.scheduledDate === today ? existing.helperShipId : null;
+    const day = frozen === null ? null : weekdayOf(today);
+    if (frozen !== null && pref !== null && info(t, pref).helper.candidates.some(c => c.days.includes(day!))) return info(t, pref, day);
+    return info(t, frozen ?? pref, day);
+  };
 
   // ---- 3. 鎖（改修対象ごとの工程列）と素材の製作 ----
   const chains: Chain[] = [];
   let totalSteps = 0;
   let computationLimited = false;
+
+  // 素材需要を調べる前に工程キーを確定する。これにより工程ごとの希望担当艦を素材展開にも適用できる。
+  // 生きた既存枠は予定日・日内順で引き継ぎ、使用済み（取消済みを含む）の番号は新規枠へ再利用しない。
+  const stepKeyOf = new Map<string, string>();
+  const ordinalOf = new Map<string, number>();
+  const ordinalPools = new Map<string, { claims: number[]; used: Set<number>; assigned: number; nextFree: number }>();
+  const groupIdOf = (chain: Chain, t: Transition) => `${chain.goal.goalId}${chain.role === 'craft' ? `|craft:${chain.craftFor}` : ''}|${transitionKey(t)}`;
+  const assignStepKeys = (consumers: Chain[]) => {
+    const groups = new Map<string, { chain: Chain; index: number }[]>();
+    for (const chain of consumers) chain.transitions.forEach((t, index) => {
+      if (stepKeyOf.has(`${chain.chainId}:${index}`)) return;
+      const gid = groupIdOf(chain, t);
+      const list = groups.get(gid) ?? [];
+      list.push({ chain, index });
+      groups.set(gid, list);
+    });
+    for (const [gid, members] of groups) {
+      const prefix = `${gid}|`;
+      let pool = ordinalPools.get(gid);
+      if (!pool) {
+        const used = new Set<number>();
+        const claims: { ordinal: number; date: DateJst | null; order: number }[] = [];
+        for (const key of attemptsByKey.keys()) {
+          if (!key.startsWith(prefix)) continue;
+          const ordinal = Number(key.slice(prefix.length));
+          if (!Number.isInteger(ordinal)) continue;
+          used.add(ordinal);
+          const latest = latestOf(key);
+          if (latest && isClaim(latest)) claims.push({ ordinal, date: latest.scheduledDate, order: latest.dayOrder });
+        }
+        claims.sort((a, b) => (a.date === b.date ? 0 : a.date === null ? 1 : b.date === null ? -1 : compareDate(a.date, b.date)) || a.order - b.order || a.ordinal - b.ordinal);
+        pool = { claims: claims.map(c => c.ordinal), used, assigned: 0, nextFree: 0 };
+        ordinalPools.set(gid, pool);
+      }
+      members.sort((a, b) => a.index - b.index || a.chain.order - b.chain.order);
+      for (const { chain, index } of members) {
+        let ordinal = pool.claims[pool.assigned++];
+        if (ordinal === undefined) {
+          while (pool.used.has(pool.nextFree)) pool.nextFree++;
+          ordinal = pool.nextFree++;
+          pool.used.add(ordinal);
+        }
+        const key = `${prefix}${ordinal}`;
+        stepKeyOf.set(`${chain.chainId}:${index}`, key);
+        ordinalOf.set(key, ordinal);
+      }
+    }
+  };
 
   const takeMaterial = (equipmentId: number, count: number): number => {
     let taken = 0;
@@ -321,10 +388,11 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   /** 鎖の工程が使う素材を、空き在庫 → 製作（選択時）の順に割り当てる */
   const processConsumers = (goal: Goal, consumers: Chain[], stack: number[], depth: number) => {
+    assignStepKeys(consumers);
     const needs = new Map<number, { chain: Chain; index: number; count: number }[]>();
     for (const chain of consumers) {
       chain.transitions.forEach((t, index) => {
-        const cost = info(t).defaultCost;
+        const cost = infoForStep(t, stepKeyOf.get(`${chain.chainId}:${index}`)!).defaultCost;
         for (const e of cost?.equipment ?? []) {
           const list = needs.get(e.equipmentId) ?? [];
           list.push({ chain, index, count: e.count });
@@ -383,53 +451,9 @@ export function buildPlan(input: PlanInput): PlanResult {
     processConsumers(g, targetChains, [], 0);
   }
 
-  // ---- 4. 工程キー（目標・経路・段階・順番から安定的に導く） ----
-  const attemptsByKey = new Map<string, Attempt[]>();
-  for (const a of input.attempts) {
-    const list = attemptsByKey.get(a.stepKey) ?? [];
-    list.push(a);
-    attemptsByKey.set(a.stepKey, list);
-  }
-  for (const list of attemptsByKey.values()) list.sort((a, b) => attemptSeq(a) - attemptSeq(b));
-  // 工程の最新の試行。取り消された試行（訂正で不要になった再挑戦など）は飛ばす
-  const latestOf = (key: string): Attempt | undefined => [...(attemptsByKey.get(key) ?? [])].reverse().find((a) => a.lifecycle !== 'cancelled');
-  const isClaim = (a: Attempt): boolean => (a.lifecycle === 'active' && (a.outcome === 'none' || a.outcome === 'draft' || a.outcome === 'skip')) || a.outcome === 'failure';
-
-  const groups = new Map<string, { chain: Chain; index: number }[]>();
-  const groupIdOf = (chain: Chain, t: Transition) => `${chain.goal.goalId}${chain.role === 'craft' ? `|craft:${chain.craftFor}` : ''}|${transitionKey(t)}`;
-  for (const chain of chains) {
-    chain.transitions.forEach((t, index) => {
-      const gid = groupIdOf(chain, t);
-      const list = groups.get(gid) ?? [];
-      list.push({ chain, index });
-      groups.set(gid, list);
-    });
-  }
-  const stepKeyOf = new Map<string, string>(); // `${chainId}:${index}` → stepKey
-  const ordinalOf = new Map<string, number>();
-  for (const [gid, members] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const prefix = `${gid}|`;
-    const used = new Set<number>();
-    const claims: { ordinal: number; date: DateJst | null; order: number }[] = [];
-    for (const key of attemptsByKey.keys()) {
-      if (!key.startsWith(prefix)) continue;
-      const ordinal = Number(key.slice(prefix.length));
-      if (!Number.isInteger(ordinal)) continue;
-      used.add(ordinal);
-      // 取り消された試行（訂正で不要になった再挑戦など）は飛ばし、その前の試行で番号を保つ
-      const latest = latestOf(key);
-      if (latest && isClaim(latest)) claims.push({ ordinal, date: latest.scheduledDate, order: latest.dayOrder });
-    }
-    claims.sort((a, b) => (a.date === b.date ? 0 : a.date === null ? 1 : b.date === null ? -1 : compareDate(a.date, b.date)) || a.order - b.order || a.ordinal - b.ordinal);
-    const ordinals = claims.slice(0, members.length).map((c) => c.ordinal);
-    for (let o = 0; ordinals.length < members.length; o++) if (!used.has(o) && !ordinals.includes(o)) ordinals.push(o);
-    members.sort((a, b) => a.index - b.index || a.chain.order - b.chain.order);
-    members.forEach((mem, i) => {
-      const key = `${prefix}${ordinals[i]}`;
-      stepKeyOf.set(`${mem.chain.chainId}:${mem.index}`, key);
-      ordinalOf.set(key, ordinals[i]!);
-    });
-  }
+  // ---- 4. 工程と依存関係 ----
+  // 計算上限で素材展開を打ち切った鎖にも、未配置理由を表示するためキーを割り当てる。
+  assignStepKeys(chains);
 
   const chainById = new Map(chains.map((c) => [c.chainId, c]));
   const steps: PlanStep[] = [];
@@ -444,14 +468,13 @@ export function buildPlan(input: PlanInput): PlanResult {
         if (dep.transitions.length > 0) preds.push(stepKeyOf.get(`${dep.chainId}:${dep.transitions.length - 1}`)!);
       }
       if (chain.craftedInputs.has(index)) craftedInputsByKey.set(stepKey, chain.craftedInputs.get(index)!);
-      const ti = info(t);
       const pref = preferred.get(stepKey) ?? null;
-      let helper = pref === null ? ti.helper : helperInfo(m, ti.options, inv.ships, pref);
-      // 素材がエントリで異なる改修は、素材計画（既定エントリの費用で展開）と同じ素材のエントリの担当艦だけで配置する
+      const ti = infoForStep(t, stepKey);
+      let helper = info(t, pref).helper;
+      // 素材展開で選んだ担当エントリと同じ素材だけを日程候補に残す。
       if (ti.materialVaries && helper.candidates.length > 0) {
-        const costOf = (entryIndex: number) => ti.options.find((o) => o.entryIndex === entryIndex)?.cost ?? null;
-        const same = helper.candidates.filter((c) => sameMaterials(costOf(c.entryIndex), ti.defaultCost));
-        helper = same.length > 0 ? { ...helper, candidates: same } : { ...helper, candidates: [], blockers: ['PREFERRED_HELPER_UNAVAILABLE'] };
+        const matching = ti.options.filter(o => sameMaterials(o.cost, ti.defaultCost));
+        helper = helperInfo(m, matching, inv.ships, pref);
       }
       const blockers: UnplacedReason[] = [...helper.blockers];
       if (chain.blocked) blockers.unshift(chain.blocked);
@@ -514,7 +537,9 @@ export function buildPlan(input: PlanInput): PlanResult {
   for (const a of todays) {
     if (a.outcome === 'none' && a.lifecycle === 'active') {
       if (stepByKey.has(a.stepKey) && latestOf(a.stepKey)?.attemptId === a.attemptId) {
-        fixed.push({ stepKey: a.stepKey, date: today, dayOrder: a.dayOrder, helperShipId: a.helperShipId });
+        const wanted = preferred.get(a.stepKey);
+        const helper = wanted !== undefined && stepByKey.get(a.stepKey)!.helperCandidates.some(c => c.shipId === wanted && c.days.includes(weekdayOf(today))) ? wanted : a.helperShipId;
+        fixed.push({ stepKey: a.stepKey, date: today, dayOrder: a.dayOrder, helperShipId: helper });
       } else {
         orphanToday.push(a);
       }
@@ -547,8 +572,8 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   // ---- 6. 配置と仮想在庫 ----
   const placements: Placement[] = [];
-  const costForEntry = (t: Transition, entryIndex: number | null): AttemptCost | null => {
-    const ti = info(t);
+  const costForEntry = (t: Transition, entryIndex: number | null, stepKey: string): AttemptCost | null => {
+    const ti = infoForStep(t, stepKey);
     if (entryIndex === null) return ti.defaultCost;
     return ti.options.find((o) => o.entryIndex === entryIndex)?.cost ?? ti.defaultCost;
   };
@@ -558,8 +583,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     const activeNext = latest && latest.lifecycle === 'active' && latest.outcome === 'none' ? latest : null;
     const provisional = !!latest && latest.outcome === 'skip' && latest.lifecycle === 'active';
     const nextSeq = (attemptsByKey.get(s.stepKey)?.length ?? 0) + 1;
-    const entryIndex = slot?.helper?.entryIndex ?? (s.helperCandidates[0]?.entryIndex ?? info(s.transition).defaultEntry);
-    const cost = costForEntry(s.transition, entryIndex);
+    const entryIndex = slot?.helper?.entryIndex ?? (slot?.fixed ? infoForStep(s.transition, s.stepKey).defaultEntry : (s.helperCandidates[0]?.entryIndex ?? infoForStep(s.transition, s.stepKey).defaultEntry));
+    const cost = costForEntry(s.transition, entryIndex, s.stepKey);
     placements.push({
       stepKey: s.stepKey,
       goalId: s.goalId,

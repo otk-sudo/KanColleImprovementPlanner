@@ -35,6 +35,7 @@ npm run dev            # http://localhost:5173
 | 技術構成（採用結果） | [docs/technology-selection.md](docs/technology-selection.md) |
 | 実装状況・未確認 | [docs/implementation-status.md](docs/implementation-status.md) |
 | 公開準備の追加作業・受入証拠 | [docs/release-readiness.md](docs/release-readiness.md) |
+| 実出典の計画を手で追う例（A04） | [docs/real-planning-examples.md](docs/real-planning-examples.md) |
 | 検証の対応表（A・P → テスト） | [docs/test-traceability.md](docs/test-traceability.md) |
 | 画面比較の記録 | [docs/screen-comparison.md](docs/screen-comparison.md) |
 | 公開手順 | [docs/release.md](docs/release.md) |

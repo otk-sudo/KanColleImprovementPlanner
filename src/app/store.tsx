@@ -71,6 +71,8 @@ interface StoreValue {
   /** options.base を省略すると、画面を開いた時点（またはこのタブの直前の確定後）の版で確定する */
   run: <P, R>(commandType: string, handler: Handler<P, R>, payload: P, options?: { commandId?: string; base?: CommandBase }) => Promise<RunResult<R>>;
   refresh: () => Promise<AppData>;
+  reloadPending: boolean;
+  reloadAndReport: () => Promise<boolean>;
   /** 画面を開いた時点の版を記録する（画面遷移ごとに呼ぶ） */
   capturePageBase: () => void;
   /** 翌日処理を行い、保存できなければ再試行できる警告を残す。保存できたら true */
@@ -117,6 +119,9 @@ function messageFor(outcome: CommandOutcome<unknown>): string | null {
 
 const CHANNEL = 'kancolle-improvement-planner';
 export const ROLLOVER_FAILED = '日付変更の処理（未完了の予定の繰越）を保存できませんでした。保存容量を確認してから再試行してください（画面を開き直したときも再試行します）。';
+const ROLLOVER_CHECK_FAILED = '日付変更の処理・最新データの確認を完了できませんでした。保存済みの処理は重複しません。再試行してください。';
+const RELOAD_FAILED = '最新データの表示を更新できませんでした。表示中の所持数や予定は古い可能性があります。最新データを再読み込みしてください。';
+const RESTORE_READ_FAILED = 'バックアップの復元は保存済みですが、最新データを読み直せませんでした。復元処理を繰り返さず、復元結果の確認を再試行してください。';
 
 export function StoreProvider({ service, master, manifest, initialData, children }: { service: AppService; master: MasterIndex; manifest: MasterManifest; initialData: AppData; children: ReactNode }) {
   const [data, setData] = useState<AppData>(initialData);
@@ -132,6 +137,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
   const dataRef = useRef<AppData>(initialData);
   const rolloverFailed = useRef(false);
   const [rolloverPending, setRolloverPending] = useState(false);
+  const [reloadPending, setReloadPending] = useState(false);
   const [commandGeneration, setCommandGeneration] = useState(0);
   // 他タブの通知で表示用のデータを読み直しても、この版は更新しない（開いていた画面の確定を競合として扱う）
   const pageBase = useRef<CommandBase>(baseOf(initialData));
@@ -142,8 +148,22 @@ export function StoreProvider({ service, master, manifest, initialData, children
     setData(d);
     setToday(service.today());
     setSaveState(d.meta.masterReviewRequired ? 'review' : d.meta.planDirty ? 'dirty' : 'saved');
+    setReloadPending(false);
+    setSaveMessage(m => m === RELOAD_FAILED || m === RESTORE_READ_FAILED ? null : m);
     return d;
   }, [service]);
+
+  const reloadAndReport = useCallback(async () => {
+    try {
+      await refresh();
+      return true;
+    } catch {
+      setReloadPending(true);
+      setSaveState('reload');
+      setSaveMessage(RELOAD_FAILED);
+      return false;
+    }
+  }, [refresh]);
 
   const capturePageBase = useCallback(() => {
     pageBase.current = baseOf(dataRef.current);
@@ -188,7 +208,8 @@ export function StoreProvider({ service, master, manifest, initialData, children
         } catch {
           // 保存の受付記録は残っている可能性がある。入力・確定ID・日時・前提の版を変えずに再送させ、
           // 保存済みなら ALREADY_APPLIED で確認する。保存失敗と誤表示したり、未処理の例外にしない。
-          const message = '保存処理の後に最新データを読み直せませんでした。入力を保持しています。同じ内容でもう一度確定してください。保存済みの場合は重複せず結果を確認します。';
+          const restored = commandType === 'RestoreBackup' && (outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED');
+          const message = restored ? RESTORE_READ_FAILED : '保存処理の後に最新データを読み直せませんでした。入力を保持しています。同じ内容でもう一度確定してください。保存済みの場合は重複せず結果を確認します。';
           setSaveState('reload');
           setSaveMessage(message);
           if (outcome.status === 'APPLIED' || outcome.status === 'ALREADY_APPLIED') broadcast();
@@ -235,20 +256,28 @@ export function StoreProvider({ service, master, manifest, initialData, children
 
   // 翌日処理。保存できなかった場合は、再試行で保存できるまで消えない警告にする（起動後・訂正後・確認待ちの取消後で共通）
   const rolloverAndReport = useCallback(async () => {
-    const r = await service.rollover();
-    if (r.moved > 0) broadcast();
-    await refresh();
-    if (!r.saved) {
+    try {
+      const r = await service.rollover();
+      if (r.moved > 0) broadcast();
+      await refresh();
+      if (!r.saved) {
+        rolloverFailed.current = true;
+        setRolloverPending(true);
+        setSaveState('error');
+        setSaveMessage(ROLLOVER_FAILED);
+      } else if (rolloverFailed.current) {
+        rolloverFailed.current = false;
+        setRolloverPending(false);
+        setSaveMessage((m) => (m === ROLLOVER_FAILED || m === ROLLOVER_CHECK_FAILED ? null : m));
+      }
+      return r.saved;
+    } catch {
       rolloverFailed.current = true;
       setRolloverPending(true);
-      setSaveState('error');
-      setSaveMessage(ROLLOVER_FAILED);
-    } else if (rolloverFailed.current) {
-      rolloverFailed.current = false;
-      setRolloverPending(false);
-      setSaveMessage((m) => (m === ROLLOVER_FAILED ? null : m));
+      setSaveState('reload');
+      setSaveMessage(ROLLOVER_CHECK_FAILED);
+      return false;
     }
-    return r.saved;
   }, [service, refresh, broadcast]);
 
   // 起動・フォーカス復帰・日付変更・他タブの変更
@@ -260,7 +289,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
     };
     try {
       channel.current = new BroadcastChannel(CHANNEL);
-      channel.current.onmessage = () => void refresh();
+      channel.current.onmessage = () => void reloadAndReport();
     } catch {
       channel.current = null;
     }
@@ -284,7 +313,7 @@ export function StoreProvider({ service, master, manifest, initialData, children
       window.clearInterval(timer);
       channel.current?.close();
     };
-  }, [service, refresh, broadcast, rolloverAndReport]);
+  }, [service, reloadAndReport, broadcast, rolloverAndReport]);
 
   const projection = useMemo(() => projectInventory(data.baselines, data.resultEvents, data.drafts), [data]);
   const plan = useMemo(() => {
@@ -311,6 +340,8 @@ export function StoreProvider({ service, master, manifest, initialData, children
     busy,
     run,
     refresh,
+    reloadPending,
+    reloadAndReport,
     capturePageBase,
     rolloverAndReport,
     rolloverPending,

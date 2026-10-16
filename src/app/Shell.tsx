@@ -87,7 +87,7 @@ export function Shell({ nav, children }: { nav: NavKey; children: ReactNode }) {
 
 /** top：画面設計（1440×940）での本文の開始位置（px）。見出しとの間隔をそろえる */
 export function Page({ nav, title, sub, actions, children, docTitle, top = 190 }: { nav: NavKey; title: ReactNode; sub?: ReactNode; actions?: ReactNode; children: ReactNode; docTitle?: string; top?: number }) {
-  const { saveMessage, notice, setNotice, data, run, busy, rolloverPending, rolloverAndReport } = useStore();
+  const { saveMessage, notice, setNotice, data, run, busy, rolloverPending, rolloverAndReport, reloadPending, reloadAndReport } = useStore();
   useEffect(() => {
     document.title = `${docTitle ?? (typeof title === 'string' ? title : '改修航路')} — 改修航路`;
   }, [title, docTitle]);
@@ -103,6 +103,7 @@ export function Page({ nav, title, sub, actions, children, docTitle, top = 190 }
       {saveMessage ? (
         <div className="banner banner-warn page-alert" role="alert">
           {saveMessage}
+          {reloadPending ? <>{' '}<button type="button" className="link-button" disabled={busy} onClick={() => void reloadAndReport()}>最新データを再読み込み</button></> : null}
           {rolloverPending ? (
             <>
               {' '}

@@ -74,7 +74,7 @@ export function schedule(input: ScheduleInput): ScheduleOutput {
 
   for (const f of input.fixed) {
     const step = byKey.get(f.stepKey);
-    placed.set(f.stepKey, { date: f.date, dayOrder: f.dayOrder, helper: step?.candidates.find((c) => c.shipId === f.helperShipId) ?? null, fixed: true });
+    placed.set(f.stepKey, { date: f.date, dayOrder: f.dayOrder, helper: step?.candidates.find((c) => c.shipId === f.helperShipId && c.days.includes(weekdayOf(f.date))) ?? null, fixed: true });
   }
 
   // 配置前に判明している理由を後続へ伝える

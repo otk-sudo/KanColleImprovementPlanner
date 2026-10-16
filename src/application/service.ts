@@ -104,7 +104,14 @@ export class AppService {
   /** 利用者の確定操作を実行し、事実の保存に成功したら計画を再計算する */
   async run<P, R>(commandType: string, handler: Handler<P, R>, payload: P, base: { datasetEpoch: string; expectedRevision: number; commandId?: string }): Promise<CommandOutcome<R> & { recalc?: RecalcStatus; commandId: string }> {
     const commandId = base.commandId ?? newId('cmd');
-    if (this.staleMaster((await loadData(this.db)).meta)) return { status: 'WRITER_INCOMPATIBLE', commandId };
+    let before: AppData;
+    try {
+      before = await loadData(this.db);
+    } catch {
+      // 受付前なので、この操作は未保存。同じ受付IDと入力で再試行できる。
+      return { status: 'STORAGE_ERROR', code: 'STORAGE_ERROR', retryable: true, message: '保存前のデータを読み込めませんでした。この操作は保存していません。入力内容を保持しています。再試行してください。', commandId };
+    }
+    if (this.staleMaster(before.meta)) return { status: 'WRITER_INCOMPATIBLE', commandId };
     // 日付で決まる操作（スキップ・同日の再挑戦・記録など）は、画面の「今日」が実行時の日本時間の日付と同じときだけ受け付ける
     // （日付をまたいで開いていた画面から、日付の切り替えの処理より前に前日の操作として保存しない）。
     // 業務検証として受付記録・版の確認の後に行うので、日付が変わる前に保存済みの確定の送り直しは ALREADY_APPLIED になる
@@ -126,7 +133,14 @@ export class AppService {
   /** 計画を計算し、当日の新規配置・将来の再配置・不要な予定の取消を保存する */
   async recalculate(): Promise<RecalcStatus> {
     for (let i = 0; i < 4; i++) {
-      const data = await loadData(this.db);
+      let data: AppData;
+      try {
+        data = await loadData(this.db);
+      } catch {
+        // 直前の確定操作が保存済みでも、再計算の入力読み込みは失敗し得る。
+        // 例外でAPPLIEDの結果を失わず、計画再計算待ちとして返す。
+        return 'FAILED';
+      }
       if (this.staleMaster(data.meta)) return 'STALE_MASTER';
       if (data.meta.masterReviewRequired) return 'MASTER_REVIEW';
       let plan: PlanResult;

@@ -447,6 +447,7 @@ export function GoalStepsPage() {
   const goal = goals.find((g) => g.goalId === goalId) ?? goals[0];
   const [showRoutes, setShowRoutes] = useState(false);
   const [pickHelper, setPickHelper] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   if (!goal) {
     return (
       <Page nav="materials" title="工程と改修条件" top={195} sub="目標に必要な工程・担当艦・曜日・出典を確認します。">
@@ -474,15 +475,19 @@ export function GoalStepsPage() {
   const completed = gp?.completed ?? 0;
 
   const setMaterialRoute = async (equipmentId: number, choice: MaterialRouteChoice) => {
-    await run('SaveGoal', handleSaveGoal, { goal: { ...goal, materialRoutes: { ...goal.materialRoutes, [String(equipmentId)]: choice } }, isNew: false });
+    const r = await run('SaveGoal', handleSaveGoal, { goal: { ...goal, materialRoutes: { ...goal.materialRoutes, [String(equipmentId)]: choice } }, isNew: false });
+    setMessage(r.ok ? null : r.message);
   };
   const setHelper = async (stepKey: string, shipId: number | null) => {
-    await run('SetPreferredHelper', handleSetPreferredHelper, { stepKey, shipId });
+    const r = await run('SetPreferredHelper', handleSetPreferredHelper, { stepKey, shipId });
+    if (!r.ok) return setMessage(r.message);
+    setMessage(null);
     setPickHelper(null);
   };
 
   return (
     <Page nav="materials" title="工程と改修条件" top={195} sub="目標に必要な工程・担当艦・曜日・出典を確認します。">
+      {message ? <div className="banner banner-warn page-alert" role="alert">{message}</div> : null}
       <div className="steps-head">
         <label className="visually-hidden" htmlFor="steps-goal">
           目標を選ぶ
@@ -511,11 +516,13 @@ export function GoalStepsPage() {
                       {s.costVaries ? '（担当艦により費用が異なる）' : ''}
                     </p>
                     <p className="steps-item-meta text-sub">
+                      {p?.executionGate === 'reviewRequired' ? <span className="text-warn">当日予定は確認待ちです。担当艦・曜日・所持を確認してください。{' '}</span> : null}
                       {p?.date ? `予定 ${p.date.slice(5).replace('-', '/')}` : p?.reasons.length ? `未配置：${UNPLACED_REASON_LABELS[p.reasons[0]!]}` : ''}
                       {' ・ '}
                       <button type="button" className="link-button steps-helper-link" aria-expanded={pickHelper === s.stepKey} onClick={() => setPickHelper(pickHelper === s.stepKey ? null : s.stepKey)}>
                         担当艦：{p?.helperShipId ? master.shipName(p.helperShipId) : s.helperNote?.preferredShipId ? `${master.shipName(s.helperNote.preferredShipId)}（希望）` : '自動で選ぶ'} ▾
                       </button>
+                      {p?.helperShipId && s.helperNote?.preferredShipId && s.helperNote.preferredShipId !== p.helperShipId ? `（希望：${master.shipName(s.helperNote.preferredShipId)}）` : null}
                     </p>
                     {pickHelper === s.stepKey ? <HelperChooser step={s} onPick={(id) => void setHelper(s.stepKey, id)} busy={busy} /> : null}
                   </li>

@@ -11,8 +11,8 @@
 | A01 | e2e/import.spec.ts「A01：…倍増しない」、parse.test.ts（簡易装備・slot_item）、apply.test.ts（P13/P16）。ローカル：private の実入力で独立集計と一致・再取り込みで倍増なし（work/a01.local.test.ts、Git 対象外） | — |
 | A02 | e2e/import.spec.ts（資材だけの取り込み・74式EN ファイル・認証情報を受け付けない）、parse.test.ts（port・material・useitem・require_info・ラッパー） | 実ゲームの Chrome/Edge・74式EN の実レスポンスでの取り込み（利用者のゲーム環境が必要） |
 | A03 | e2e/record.spec.ts「A03/A06」、index.test.ts（未収録を不可と断定しない） | — |
-| A04 | plan.test.ts（P01〜P05、確実化 P35/P36）、index.test.ts（p1/p2/extra・更新） | 実マスターの全レシピを手計算と照合した記録はなし（網羅性は master:crosscheck で出典と一致を確認） |
-| A05 | plan.test.ts（担当艦の改造段階違い・未所持・不明）、inventoryModel.test.ts | 希望担当艦によって素材が変わる場合の再展開に制限あり（ID121/267、R13/R19）。release-readiness.md参照 |
+| A04 | plan.test.ts（P01〜P05、確実化 P35/P36）、index.test.ts、real-master.test.ts（実出典全エントリ）、real-planning-examples.test.ts（手計算5例M0〜M4）。式と前提は[real-planning-examples.md](real-planning-examples.md) | 全レシピの手計算、出典と実ゲームの全件照合は未実施 |
+| A05 | plan.test.ts（担当艦の改造段階違い・未所持・不明）、inventoryModel.test.ts、helper-materials.test.ts、real-master.test.ts（ID121/267の10段階）、e2e/helper-materials.spec.ts（当日・将来） | 追加変更の最新SHAレビュー・CIはrelease-readiness.mdとPR本文参照 |
 | A06 | plan.test.ts（曜日・休み・上限・P06〜P08・P19）、e2e/record.spec.ts「A03/A06」 | — |
 | A07 | rollover.test.ts、service.test.ts（P10・P23・P24・P42/P29）、e2e/record.spec.ts（日付変更後の繰越・スキップ・過去日の記録を未実施へ訂正した直後の繰越） | スリープ復帰の実機確認 |
 | A08 | calendarModel.test.ts（P38）、画面比較 S01/S02/S18 | — |

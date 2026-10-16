@@ -183,6 +183,47 @@ describe('共通契約：再送・競合・保存失敗（design/10）', () => {
     expect(retry.status).toBe('APPLIED');
   });
 
+  it('P17：受付前の読み込み失敗は未保存として返し、同じIDで再試行できる', async () => {
+    const s = await service();
+    const b = { ...(await base(s)), commandId: 'read-before-command' };
+    const payload = { ...updates('[{"api_id":8,"api_value":10}]'), snapshotId: 'read-before', now: 'n' };
+    const spy = vi.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('read'));
+    try {
+      const r = await s.run('ImportInventory', handleImport, payload, b);
+      expect(r.status).toBe('STORAGE_ERROR');
+      expect(r.commandId).toBe(b.commandId);
+      expect((await s.load()).baselines).toEqual([]);
+      expect(await db.commandReceipts.count()).toBe(0);
+      expect((await s.run('ImportInventory', handleImport, payload, b)).status).toBe('APPLIED');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('P17：保存後の再計算入力の読み込み失敗でも保存結果を保持し、再送で二重適用しない', async () => {
+    const s = await service();
+    const b = { ...(await base(s)), commandId: 'read-after-command' };
+    const payload = { ...updates('[{"api_id":8,"api_value":10}]'), snapshotId: 'read-after', now: 'n' };
+    const spy = vi.spyOn(db, 'transaction');
+    const handler: typeof handleImport = (data, p) => {
+      const result = handleImport(data, p);
+      spy.mockRejectedValueOnce(new Error('recalc read'));
+      return result;
+    };
+    try {
+      const r = await s.run('ImportInventory', handler, payload, b);
+      expect(r.status).toBe('APPLIED');
+      expect(r.recalc).toBe('FAILED');
+      expect((await s.load()).meta.planDirty).toBe(true);
+      expect(await db.commandReceipts.count()).toBe(1);
+      expect((await s.run('ImportInventory', handleImport, payload, b)).status).toBe('ALREADY_APPLIED');
+      expect((await s.load()).baselines).toHaveLength(1);
+      expect(await db.commandReceipts.count()).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('P17：計算だけ失敗しても保存済みの在庫は戻さず「計画再計算待ち」を残す', async () => {
     const s = await service();
     const spy = vi.spyOn(s, 'computePlan').mockImplementation(() => {

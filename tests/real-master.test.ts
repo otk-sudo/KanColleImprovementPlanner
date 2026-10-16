@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildMasterIndex, transitionOptions, type AttemptCost, type Transition } from '../src/domain/master';
 import { manifestSchema, masterSchema } from '../src/domain/master/schema';
+import { goal, planInput } from '../src/test-support/planFixtures';
+import { buildPlan } from '../src/domain/planning/plan';
 
 // R07/R08/R10/R11、A04。合成レシピだけでなく、固定した実出典の全エントリ・全段階を照合する。
 // 期待値は生成済みマスターやアプリの計算関数から作らず、元の EquipmentUpgrades.json から独立集計する。
@@ -73,6 +75,24 @@ describe('固定した実マスターの全エントリ照合', () => {
         expect(options[0]!.cost, `段階 ${level} の費用`).toEqual(expectedCost(entry, level));
         expect(options[0]!.helpers, `段階 ${level} の担当艦・曜日`).toEqual((entry.helpers ?? []).map(h => ({ shipIds: h.ship_ids, days: h.days })));
       }
+    });
+  }
+});
+
+describe('R13/R19：実出典の担当艦別素材を計画に適用', () => {
+  for (const [equipmentId, levels] of [[121, [7, 8, 9, 10]], [267, [1, 2, 3, 4, 5, 6]]] as const) {
+    for (const level of levels) it(`装備ID ${equipmentId} 到達★${level}：別素材の担当を指定して費用と配置を照合`, () => {
+      const rawEntries = raw.find(r => r.eq_id === equipmentId)!.improvement!;
+      const chosen = rawEntries[1]!;
+      const shipId = chosen.helpers![0]!.ship_ids[0]!;
+      const expected = expectedCost(chosen, level);
+      const ships = [...new Set(rawEntries.flatMap(e => (e.helpers ?? []).flatMap(h => h.ship_ids)))];
+      const equipment: [number, number, number][] = [[equipmentId, level - 1, 1], ...expected.equipment.map(e => [e.equipmentId, 0, e.count] as [number, number, number])];
+      const p = buildPlan(planInput({ master, inventory: { equipment, ships, resources: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [i + 1, 1000])), items: Object.fromEntries(expected.useItems.map(i => [i.useItemId, i.count])) }, goals: [goal({ goalId: 'real', equipmentId, targetStar: level })], preferredHelpers: [{ stepKey: `real|${equipmentId}:${level - 1}>${level}|0`, shipId }] }));
+      expect(p.unplaced).toEqual([]);
+      expect(p.placements[0]).toMatchObject({ helperShipId: shipId, entryIndex: 1, cost: expected, tentative: false });
+      expect(p.placements[0]!.date).not.toBeNull();
+      for (const material of expected.equipment) expect(p.totals.find(t => t.key === `equipment:${material.equipmentId}`)?.need).toBe(material.count);
     });
   }
 });
