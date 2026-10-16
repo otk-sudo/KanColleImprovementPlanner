@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from '../domain/model';
 import { DB_SCHEMA_VERSION, WRITER_VERSION, type CommandReceipt, type KaishuDb, type Meta } from './db';
 
 // 全更新の共通契約（design/10「操作の共通契約」「再送判定の処理順」）。
-// 1) writer互換性・datasetEpoch → 2) 受付済み commandId → 3) expectedRevision → 4) 業務検証と保存を1トランザクション。
+// 1) schema/writer互換性・datasetEpoch → 2) 受付済み commandId → 3) マスターの書込可否 → 4) expectedRevision → 5) 業務検証と保存を1トランザクション。
 
 export interface AppData {
   meta: Meta;
@@ -170,7 +170,7 @@ async function applyWrites(db: KaishuDb, meta: Meta, writes: Writes, now: string
 }
 
 /** 業務の更新を1トランザクションで実行する */
-export async function executeCommand<P, R>(db: KaishuDb, env: CommandEnvelope<P>, handler: Handler<P, R>, now: string): Promise<CommandOutcome<R>> {
+export async function executeCommand<P, R>(db: KaishuDb, env: CommandEnvelope<P>, handler: Handler<P, R>, now: string, canWrite: (meta: Meta) => boolean): Promise<CommandOutcome<R>> {
   const payloadHash = quickHash(`${env.commandType}:${canonicalJson(env.payload)}`);
   try {
     return await db.transaction('rw', db.businessTables, async (): Promise<CommandOutcome<R>> => {
@@ -183,6 +183,8 @@ export async function executeCommand<P, R>(db: KaishuDb, env: CommandEnvelope<P>
         if (receipt.commandType === env.commandType && receipt.payloadHash === payloadHash) return { status: 'ALREADY_APPLIED', revision: receipt.savedRevision, result: receipt.result as R };
         return { status: 'COMMAND_ID_REUSED' };
       }
+      // 古いマスターでも同一要求の保存結果は確認できる。新規書き込みは同じトランザクションのmetaで拒否する。
+      if (!canWrite(meta)) return { status: 'WRITER_INCOMPATIBLE' };
       if (env.expectedRevision !== meta.revision) return { status: 'CONFLICT', revision: meta.revision };
       const data = await readAll(db);
       const outcome = handler(data, env.payload);

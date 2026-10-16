@@ -5,6 +5,31 @@ import { backup, eqBaseline, goal, shipBaseline, valueBaseline, type BackupSpec 
 
 const seed: BackupSpec = { masterVersion: 'screen-fixture-v1', baselines: [eqBaseline([[ID.mainGunA, 0, 1], [ID.materialA, 0, 10]]), shipBaseline([ID.shipAKai2, ID.shipBKai2]), ...Array.from({ length: 8 }, (_, i) => valueBaseline(`resource:${i + 1}`, 100))], goals: [goal({ goalId: 'g', equipmentId: ID.mainGunA, targetStar: 1 })] };
 
+for (const applied of [false, true]) test(`PR指摘：保存後の読み直し失敗にマスター変更が重なっても再送で保存結果を確認する（適用済み=${applied}）`, async ({ context }) => {
+  const page = await context.newPage();
+  await start(page, { data: seed, route: '/settings' });
+  await page.locator('#holiday-start').fill('2026-12-20');
+  await page.locator('#holiday-end').fill('2026-12-21');
+  await page.evaluate(() => window.__kaishu!.failLoad(1));
+  await page.getByRole('button', { name: '休みを追加' }).click();
+  await expect(page.getByText('保存処理の後に最新データを読み直せませんでした。', { exact: false }).first()).toBeVisible();
+  const saved = await state(page);
+  const next = await context.newPage();
+  await start(next, { master: { ...screenMaster(), masterVersion: 'screen-fixture-v2' }, route: '/settings' });
+  const apply = next.getByRole('button', { name: 'このマスターを適用して再計算' });
+  await expect(apply).toBeVisible();
+  if (applied) {
+    await apply.click();
+    await expect(apply).toHaveCount(0);
+  }
+  const changed = await state(next);
+  expect(changed.settings.holidays).toEqual(saved.settings.holidays);
+  await page.getByRole('button', { name: '休みを追加' }).click();
+  await expect(page.locator('#holiday-start')).toHaveValue('');
+  await expect(page.locator('#holiday-end')).toHaveValue('');
+  expect(await state(page)).toEqual(changed);
+});
+
 test('PR指摘：復元保存後の読み直し失敗では、復元を繰り返さず確認だけ再試行する', async ({ page }) => {
   await start(page, { data: seed, route: '/settings' });
   await page.locator('#holiday-start').fill('2026-12-20');

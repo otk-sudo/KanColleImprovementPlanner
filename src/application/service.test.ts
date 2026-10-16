@@ -1046,6 +1046,37 @@ describe('保護・復元', () => {
     expect(after.attempts).toEqual(before.attempts);
   });
 
+  it.each([false, true])('保存済み要求の再送はマスター変更後も受付を確認し、新規保存・再計算は拒否する（適用済み=%s）', async (applied) => {
+    const s = await service();
+    await seedPlan(s);
+    const b = { ...(await base(s)), commandId: 'saved-before-master-change' };
+    const payload = { weekdayLimits: [1, 1, 1, 1, 1, 1, 1], searchDays: 366 };
+    const saved = await s.run('SaveSettings', handleSaveSettings, payload, b);
+    expect(saved.status).toBe('APPLIED');
+    const next = new AppService(db, buildMasterIndex(fixtureMaster({ masterVersion: 'next' })), clock);
+    await next.init();
+    if (applied) expect((await next.run('ApplyMasterVersion', handleApplyMaster, { masterVersion: 'next' }, await base(next))).status).toBe('APPLIED');
+    const before = await s.load();
+    const receipts = await db.commandReceipts.toArray();
+    const handler = vi.fn(handleSaveSettings);
+    const compute = vi.spyOn(s, 'computePlan');
+    try {
+      const retry = await s.run('SaveSettings', handler, payload, b);
+      expect(retry).toMatchObject({ ...saved, status: 'ALREADY_APPLIED', recalc: 'STALE_MASTER' });
+      expect(handler).not.toHaveBeenCalled();
+      expect(compute).not.toHaveBeenCalled();
+      // 内容不一致・復元前epoch・新しい操作を、保存済みの確認と取り違えない。
+      expect((await s.run('SaveSettings', handler, { ...payload, searchDays: 365 }, b)).status).toBe('COMMAND_ID_REUSED');
+      expect((await s.run('SaveSettings', handler, payload, { ...b, datasetEpoch: 'old-epoch' })).status).toBe('EPOCH_MISMATCH');
+      expect((await s.run('SaveSettings', handler, payload, { ...(await base(s)), commandId: 'new-after-master-change' })).status).toBe('WRITER_INCOMPATIBLE');
+      expect(handler).not.toHaveBeenCalled();
+      expect(await s.load()).toEqual(before);
+      expect(await db.commandReceipts.toArray()).toEqual(receipts);
+    } finally {
+      compute.mockRestore();
+    }
+  });
+
   it('新しいマスターの確認待ちの間、古いマスターを読み込んだタブは古い版を適用できず、書き込みもしない', async () => {
     const s = await service();
     await seedPlan(s);

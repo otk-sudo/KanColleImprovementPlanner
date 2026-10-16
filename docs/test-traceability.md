@@ -35,6 +35,7 @@
 | P12 | service.test.ts |
 | P13〜P15 | projection.test.ts |
 | P16・P17 | service.test.ts、apply.test.ts（P16） |
+| P17・P63（マスター更新との複合条件） | service.test.ts「保存済み要求の再送はマスター変更後も受付を確認し、新規保存・再計算は拒否する」（確認待ち・適用済みの2条件）、e2e/review-readiness.spec.ts「保存後の読み直し失敗にマスター変更が重なっても再送で保存結果を確認する」（同じ2条件） |
 | P18・P48・P49 | results.test.ts |
 | P19・P21 | plan.test.ts |
 | P20・P32・P55 | service.test.ts（復元） |
